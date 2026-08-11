@@ -1,0 +1,216 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens — see docs/design-analysis.md §3 and the "Ad'Ministral Core"
+ * Stitch reference (Institutional Modernism: deep navy + AI blue + soft-pink
+ * accent + pale-blue AI surface).
+ * Exposed as CSS variables so runtime accessibility preferences can override
+ * them (high contrast, enlarged text) without touching component code.
+ */
+@layer base {
+  :root {
+    /* Brand */
+    --primary: #091f4e;
+    --on-primary: #ffffff;
+    --primary-container: #000927;
+    --primary-fixed: #dce3f5;
+    --primary-fixed-dim: #b4c5ff;
+    --on-primary-fixed: #00174b;
+
+    --secondary: #d46087;
+    --on-secondary: #ffffff;
+    --secondary-fixed: #ffd9e1;
+    --secondary-fixed-dim: #ffb1c6;
+    --on-secondary-fixed: #3f001c;
+
+    /* AI accent */
+    --accent-ai: #003593;
+    --accent-ai-surface: #dce3f5;
+
+    /* Surfaces */
+    --background: #f9f9f9;
+    --surface: #f9f9f9;
+    --surface-container-lowest: #ffffff;
+    --surface-container-low: #f3f3f4;
+    --surface-container: #eeeeee;
+    --surface-container-high: #e8e8e8;
+    --surface-container-highest: #e2e2e2;
+    --inverse-surface: #2f3131;
+
+    /* Text */
+    --on-surface: #1a1c1c;
+    --on-surface-variant: #45464f;
+    --text-muted: #6b7280;
+
+    /* Borders */
+    --border-subtle: #e5e7eb;
+    --outline: #757680;
+    --outline-variant: #c5c6d0;
+
+    /* Status */
+    --success: #16a34a;
+    --success-surface: #dcfce7;
+    --on-success: #ffffff;
+    --warning: #b45309;
+    --warning-surface: #fef3c7;
+    --on-warning: #ffffff;
+    --error: #ba1a1a;
+    --status-error: #c00327;
+    --error-surface: #ffdad6;
+    --on-error: #ffffff;
+
+    /* Root font size — driven by the "texte agrandi" preference (+20%) */
+    --app-font-scale: 1;
+
+    /* Default typefaces — overridden inside `.citizen-scope` only. */
+    --font-sans: 'Inter';
+    --font-display: 'Manrope';
+  }
+
+  /*
+   * Accessibility preference: high contrast.
+   * Toggled by the `contrastEleve` preference in the UI store.
+   */
+  .a11y-high-contrast {
+    --on-surface: #000000;
+    --on-surface-variant: #1a1c1c;
+    --text-muted: #3f3f46;
+    --border-subtle: #757680;
+    --outline-variant: #45464f;
+    --background: #ffffff;
+    --surface: #ffffff;
+    --surface-container-low: #f3f3f4;
+  }
+
+  /* Accessibility preference: enlarged text (+20%). */
+  .a11y-large-text {
+    --app-font-scale: 1.2;
+  }
+
+  html {
+    font-size: calc(16px * var(--app-font-scale));
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background font-sans text-body-md text-on-surface antialiased;
+  }
+
+  /*
+   * Focus is never removed. Radix and native elements both route through
+   * :focus-visible so pointer users don't see the ring.
+   */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+  }
+
+  /* Preference: reinforced keyboard navigation — thicker, always-on ring. */
+  .a11y-keyboard-nav :focus-visible {
+    @apply ring-4;
+  }
+
+  /*
+   * Preference: simplified interface, plus the OS-level reduced-motion setting.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  .a11y-reduced-motion *,
+  .a11y-reduced-motion *::before,
+  .a11y-reduced-motion *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  ::selection {
+    @apply bg-primary-fixed text-primary;
+  }
+
+  /*
+   * Administral design system — oklch tokens lifted from the reference
+   * design-to-code project, for the citizen-facing redesign
+   * (docs: see the "Administral" rebuild — everything except France Travail,
+   * the agent CAF back-office and the voice onboarding page).
+   *
+   * `--admtl-*` names are brand new (no existing class used them), so they
+   * are declared once here at :root — safe everywhere. `--background`,
+   * `--surface`, `--border-subtle` and `--text-muted` already have an
+   * app-wide meaning (used throughout the agent back-office), so their
+   * Administral values are only applied inside `.citizen-scope`, which wraps
+   * the new citizen shell — never at :root.
+   */
+  :root {
+    /*
+     * `brand` and `text-muted` sit one notch darker than the reference's
+     * 0.55 / 0.554: at the reference values, brand-on-brand-soft (4.18) and
+     * muted-on-brand-soft (4.01) both fall short of WCAG AA for body text,
+     * and both pairings occur (assistant panels, documentation callouts).
+     * 0.52 clears 4.5 on every surface used while staying visually the same blue.
+     */
+    --admtl-brand: oklch(0.52 0.19 258);
+    --admtl-brand-soft: oklch(0.94 0.03 250);
+    --admtl-marianne: oklch(0.32 0.13 265);
+    --admtl-marianne-foreground: oklch(0.99 0.005 250);
+    --admtl-ink: oklch(0.19 0.06 264);
+    --admtl-foreground: oklch(0.22 0.05 262);
+    --admtl-card: oklch(1 0 0);
+    --admtl-card-foreground: oklch(0.129 0.042 264.695);
+    --admtl-chart-2: oklch(0.6 0.118 184.704);
+  }
+
+  /*
+   * Citizen-facing scope: overrides the shared surface tokens with the
+   * Administral values and swaps the typefaces to DM Sans / Plus Jakarta
+   * Sans. Wraps `CitizenAppShell` only — the agent back-office (`AppShell`,
+   * `AdminLayout`) and France Travail / voice pages never carry this class,
+   * so they keep their current colours and fonts untouched.
+   */
+  .citizen-scope {
+    --background: oklch(1 0 0);
+    --surface: oklch(0.985 0.008 250);
+    --border-subtle: oklch(0.929 0.013 255.508);
+    --text-muted: oklch(0.52 0.046 257.417);
+    --font-sans: 'DM Sans';
+    --font-display: 'Plus Jakarta Sans';
+  }
+
+  /* The global ring uses `--primary`, which `.citizen-scope` deliberately does
+     not override; without this the citizen area focuses in the agent navy. */
+  .citizen-scope :focus-visible {
+    @apply ring-brand;
+  }
+
+  /* Uppercase eyebrow label — section kickers across the Administral redesign. */
+  .eyebrow {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.75rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--admtl-brand);
+  }
+
+}
+
+@layer components {
+  /* Section titles: label-md, uppercase, wide tracking (see analysis §3.2). */
+  .section-title {
+    @apply text-label-md uppercase tracking-wider text-on-surface;
+  }
+
+  /* The 12-column bento grid used by dashboards. */
+  .bento-grid {
+    @apply grid grid-cols-1 gap-gutter md:grid-cols-12;
+  }
+}

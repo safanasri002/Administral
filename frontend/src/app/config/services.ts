@@ -1,0 +1,63 @@
+import { ROUTES } from '@/app/router/paths';
+import type { ServiceDefinition } from '@/types';
+
+/**
+ * The administrations registry — shown on `/administrations`, the first
+ * choice a citizen makes.
+ *
+ * Adding a new administration means: append an entry here, create the matching
+ * `features/<id>/` module, and register its routes. Nothing else in the shell
+ * needs to change.
+ */
+export const SERVICES: ServiceDefinition[] = [
+  {
+    id: 'caf',
+    name: 'CAF',
+    administration: 'CAF',
+    description:
+      'Gestion simplifiée de vos aides au logement et simulations de droits en temps réel.',
+    // The only administration wired up today — opens its own services hub
+    // (`/portal`) rather than a service directly, since CAF itself offers
+    // several (APL, AF, ALF, Prime d'activité).
+    basePath: ROUTES.portal,
+    status: 'available',
+    logoUrl: '/caf-logo.svg',
+    photoUrl: '/caf.jpg',
+  },
+  {
+    id: 'france-travail',
+    name: 'France Travail',
+    administration: 'France Travail',
+    description:
+      'Analysez une offre d’emploi : compétences requises, pièces à préparer et vos chances d’obtenir le poste.',
+    basePath: '/france-travail',
+    status: 'available',
+    logoUrl: '/france-travail-logo.svg',
+    photoUrl: '/franceTravail.jpg',
+  },
+  {
+    id: 'assurance-maladie',
+    name: 'Assurance Maladie',
+    administration: 'Ameli',
+    description: 'Centralisation de vos remboursements et documents Ameli pour vos dossiers.',
+    basePath: '/assurance-maladie',
+    status: 'coming_soon',
+    logoUrl: '/assurance-maladie-logo.svg',
+    photoUrl: '/assuranceMaladie.jpg',
+  },
+  {
+    id: 'impots',
+    name: 'Impôts',
+    administration: 'DGFiP',
+    description:
+      'Visualisation de vos avis d’imposition et aide au calcul du revenu fiscal de référence.',
+    basePath: '/impots',
+    status: 'coming_soon',
+    logoUrl: '/impots.jpg',
+    photoUrl: '/impots.jpg',
+  },
+];
+
+export function getService(id: ServiceDefinition['id']) {
+  return SERVICES.find((service) => service.id === id);
+}

@@ -1,0 +1,49 @@
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# ORM + PostgreSQL driver
+SQLAlchemy==2.0.36
+psycopg2-binary==2.9.10
+
+# Document text extraction
+python-multipart==0.0.20
+pypdf==5.1.0
+pdfplumber==0.11.5
+# Image forensics: PDF rendering and Error Level Analysis bounding boxes.
+PyMuPDF==1.26.6
+opencv-python-headless==4.12.0.88
+Pillow==12.0.0
+
+# Schema migrations
+alembic==1.14.0
+
+# Configuration and validation
+pydantic==2.11.2
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# Citizen profiling assistant — adaptive agent loop (A3)
+langgraph==0.2.62
+
+# Citizen AI Assistant — migrated APL RAG (hybrid BM25 + Qdrant, LangGraph).
+# The embeddings model (paraphrase-multilingual-MiniLM-L12-v2) is downloaded by
+# sentence-transformers on first use and cached. torch/transformers install as
+# sentence-transformers dependencies.
+rank-bm25==0.2.2
+qdrant-client==1.18.0
+sentence-transformers==5.6.1
+mistralai==2.7.1
+# Tracing des appels LLM du moteur (décorateur @traceable dans rag/llm_client.py).
+# Arrive déjà transitivement avec langgraph, épinglé ici parce que le code l'importe
+# directement. Inactif sans LANGSMITH_TRACING/LANGSMITH_API_KEY.
+langsmith==0.10.10
+
+# Tests
+pytest==8.3.4
+httpx==0.28.1
+
+# Authentication (JWT + password hashing)
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+email-validator==2.2.0
