@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import NotFoundError
+from app.core.logger import logger
 from app.modules.agent.models import (
     AnomalySeverity,
     Case,
@@ -48,6 +49,8 @@ from app.modules.agent.models import (
 )
 from app.modules.agent.models import DocumentStatus as CaseDocumentStatus
 from app.modules.ai.coherence.service import analyser_coherence
+from app.modules.ai.inconsistency.schemas import SubmissionVerdict
+from app.modules.ai.inconsistency.service import submission_verdict
 from app.modules.auth.models import User
 from app.modules.audit import service as audit_service
 from app.modules.audit.models import AuditAction
@@ -108,6 +111,8 @@ class SubmitApplicationResponse(BaseModel):
     completion_rate: int
     coherence_score: int | None = None
     coherence_outcome: str | None = None
+    #: Coherence of the documents as submitted (status + counts), frozen now.
+    inconsistency_verdict: SubmissionVerdict | None = None
 
 
 class DecisionView(BaseModel):
@@ -151,6 +156,9 @@ class DossierReviewResponse(BaseModel):
     submitted_at: datetime | None = None
     completion_rate: int | None = None
     coherence: CoherenceView | None = None
+    #: What the administration sees of the documents' coherence — shown back
+    #: to the citizen so nothing about their dossier is known to one side only.
+    inconsistency_verdict: SubmissionVerdict | None = None
     decision: DecisionView | None = None
 
 
@@ -357,6 +365,13 @@ def _build_coherence_report(
     )
 
 
+def _verdict_of(case: Case) -> SubmissionVerdict | None:
+    """The frozen verdict, or None for a case submitted before it existed."""
+    if not case.inconsistency_verdict:
+        return None
+    return SubmissionVerdict.model_validate(case.inconsistency_verdict)
+
+
 def submit_application(
     db: Session,
     application_id: str,
@@ -396,6 +411,7 @@ def submit_application(
             completion_rate=rate,
             coherence_score=coh.coherence_score if coh is not None else None,
             coherence_outcome=coh.outcome.value if coh is not None else None,
+            inconsistency_verdict=_verdict_of(existing_case),
         )
 
     now = datetime.now(UTC)
@@ -403,6 +419,15 @@ def submit_application(
     completeness = _build_completeness_report(application, now)
     coherence = _build_coherence_report(application, profile, completeness.completion_rate, now)
     citizen = _find_or_create_citizen(db, user, profile)
+
+    # The coherence verdict the administration will see: computed now, on the
+    # documents actually sent and the profile as it stands, then frozen. Only
+    # status and counts are kept — never the citizen's earlier checks.
+    try:
+        verdict = submission_verdict(db, citizen, application).model_dump(mode="json")
+    except Exception:  # noqa: BLE001 — a verdict failure must never block a submission
+        logger.exception("Verdict de cohérence impossible à la soumission")
+        verdict = None
 
     # Map each uploaded document onto a case document, resolving which checklist
     # requirement it satisfied (by the id the classifier matched). We also keep,
@@ -424,6 +449,11 @@ def submit_application(
             # Both modules define the same status names; map by name.
             status=CaseDocumentStatus[doc.status.name],
             error_message=doc.error_message,
+            # Carried onto the case so the instructing agent can open the piece
+            # itself, not only read its metadata. Same path the C4 forensics
+            # below already consume — it is now persisted rather than only held
+            # in `doc_sources` for the duration of this call.
+            stored_path=doc.stored_path,
         )
         case_documents.append(case_doc)
         doc_sources.append((case_doc, doc.stored_path, doc.extracted_text_preview))
@@ -452,6 +482,7 @@ def submit_application(
         documents=case_documents,
         completeness_report=completeness,
         coherence_report=coherence,
+        inconsistency_verdict=verdict,
     )
 
     db.add(case)
@@ -473,6 +504,8 @@ def submit_application(
             "documents_transferred": len(case.documents),
             "completion_rate": completeness.completion_rate,
             "coherence_score": coherence.coherence_score,
+            "inconsistency_status": verdict["statut"] if verdict else None,
+            "inconsistency_count": verdict["nb_ecarts"] if verdict else None,
         },
     )
     db.commit()
@@ -610,5 +643,6 @@ def get_dossier_review(db: Session, application_id: str) -> DossierReviewRespons
             else None
         ),
         coherence=coherence,
+        inconsistency_verdict=_verdict_of(case),
         decision=decision,
     )

@@ -5,6 +5,7 @@ import {
   FileClock,
   Info,
   Leaf,
+  Lock,
   ScanSearch,
   Send,
   ShieldAlert,
@@ -23,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { DecisionContestation } from '@/features/documents/components/DecisionContestation';
 import { dossierService } from '@/services/dossierService';
 import type { DossierAnomaly, DossierReview } from '@/services/documentService';
+import type { SubmissionVerdict } from '@/services/inconsistencyService';
 
 /**
  * "Suivre un dossier déposé" — the read-only counterpart to "Envoyer un
@@ -87,7 +89,7 @@ function StepRow({ step, isLast }: { step: Step; isLast: boolean }) {
         <span
           className={cn(
             'absolute left-[15px] top-8 h-[calc(100%-1.5rem)] w-0.5',
-            step.state === 'done' ? 'bg-emerald-500' : 'bg-border',
+            step.state === 'done' ? 'bg-success' : 'bg-border',
           )}
           aria-hidden="true"
         />
@@ -96,7 +98,7 @@ function StepRow({ step, isLast }: { step: Step; isLast: boolean }) {
         className={cn(
           'z-10 flex size-8 shrink-0 items-center justify-center rounded-full border-2',
           step.state === 'done'
-            ? 'border-emerald-500 bg-emerald-500 text-white'
+            ? 'border-success bg-success text-white'
             : step.state === 'current'
               ? 'border-brand bg-brand-soft text-brand'
               : 'border-border bg-surface text-muted-foreground',
@@ -105,7 +107,7 @@ function StepRow({ step, isLast }: { step: Step; isLast: boolean }) {
         <Icon className="size-4" aria-hidden="true" />
       </span>
       <div className="min-w-0 flex-1 pt-1">
-        <p className="font-display text-sm font-bold text-ink">{step.label}</p>
+        <p className="font-display text-label-md text-ink">{step.label}</p>
         {step.description && (
           <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{step.description}</p>
         )}
@@ -122,20 +124,20 @@ function StepRow({ step, isLast }: { step: Step; isLast: boolean }) {
  * agent might be double-checking a piece of information.
  */
 const COHERENCE_OUTCOME_META: Record<string, { label: string; className: string }> = {
-  passed: { label: 'Cohérent', className: 'bg-emerald-50 text-emerald-700' },
-  warning: { label: 'À vérifier', className: 'bg-amber-50 text-amber-700' },
+  passed: { label: 'Cohérent', className: 'bg-success-surface text-success' },
+  warning: { label: 'À vérifier', className: 'bg-warning-surface text-warning' },
   failed: { label: 'Incohérence détectée', className: 'bg-destructive/10 text-destructive' },
 };
 
 const ANOMALY_SEVERITY_META: Record<string, { label: string; className: string }> = {
   info: { label: 'Information', className: 'bg-brand-soft text-brand' },
-  warning: { label: 'Vigilance', className: 'bg-amber-50 text-amber-700' },
+  warning: { label: 'Vigilance', className: 'bg-warning-surface text-warning' },
   error: { label: 'Erreur', className: 'bg-destructive/10 text-destructive' },
 };
 
 function Pill({ label, className }: { label: string; className: string }) {
   return (
-    <span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-semibold', className)}>
+    <span className={cn('inline-flex rounded-full px-3 py-1 text-label-sm', className)}>
       {label}
     </span>
   );
@@ -146,20 +148,20 @@ function AnomalyRow({ anomaly }: { anomaly: DossierAnomaly }) {
   return (
     <li className="rounded-xl border border-border/60 p-4">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-        <p className="font-display text-sm font-bold text-ink">{anomaly.field}</p>
+        <p className="font-display text-label-md text-ink">{anomaly.field}</p>
         <Pill label={meta.label} className={meta.className} />
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">{anomaly.message}</p>
       {(anomaly.declared_value || anomaly.observed_value) && (
         <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <dt className="text-label-sm uppercase tracking-wide text-muted-foreground">
               Déclaré
             </dt>
             <dd className="text-ink">{anomaly.declared_value || '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <dt className="text-label-sm uppercase tracking-wide text-muted-foreground">
               Constaté
             </dt>
             <dd className="text-ink">{anomaly.observed_value || '—'}</dd>
@@ -197,7 +199,7 @@ function CoherenceCard({ coherence }: { coherence: NonNullable<DossierReview['co
             ))}
           </ul>
         ) : (
-          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-600">
+          <p className="flex items-center gap-2 text-label-md text-success">
             <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
             Aucune incohérence relevée entre vos informations et vos pièces.
           </p>
@@ -206,6 +208,54 @@ function CoherenceCard({ coherence }: { coherence: NonNullable<DossierReview['co
         <p className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           Cette analyse assiste l’instruction ; elle ne remplace pas la décision de l’agent CAF.
+        </p>
+      </CitizenCardBody>
+    </CitizenCard>
+  );
+}
+
+const VERDICT_META: Record<SubmissionVerdict['statut'], { className: string }> = {
+  coherent: { className: 'bg-success-surface text-success' },
+  ecarts_non_resolus: { className: 'bg-warning-surface text-warning-foreground' },
+  non_verifiable: { className: 'bg-surface text-muted-foreground' },
+};
+
+function verdictLabel(verdict: SubmissionVerdict): string {
+  if (verdict.statut === 'coherent') return 'Pièces cohérentes';
+  if (verdict.statut === 'non_verifiable') return 'Non vérifiable';
+  return `${verdict.nbEcarts} écart${verdict.nbEcarts > 1 ? 's' : ''} non résolu${verdict.nbEcarts > 1 ? 's' : ''}`;
+}
+
+/**
+ * Ce que l'administration sait de la cohérence du dossier : le verdict figé à
+ * l'envoi, rien de plus. Montré au citoyen pour qu'aucune information sur son
+ * dossier ne soit connue d'un seul côté.
+ */
+function TransmittedVerdictCard({ verdict }: { verdict: SubmissionVerdict }) {
+  const parts = [
+    verdict.nbElevee && `${verdict.nbElevee} de gravité élevée`,
+    verdict.nbMoyenne && `${verdict.nbMoyenne} moyenne${verdict.nbMoyenne > 1 ? 's' : ''}`,
+    verdict.nbFaible && `${verdict.nbFaible} faible${verdict.nbFaible > 1 ? 's' : ''}`,
+  ].filter(Boolean);
+  return (
+    <CitizenCard>
+      <CitizenCardHeader
+        title="Cohérence transmise à l’administration"
+        icon={Lock}
+        action={<Pill label={verdictLabel(verdict)} className={VERDICT_META[verdict.statut].className} />}
+      />
+      <CitizenCardBody className="space-y-3">
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {verdict.statut === 'coherent'
+            ? `Les ${verdict.nbDocuments} pièce${verdict.nbDocuments > 1 ? 's' : ''} transmise${verdict.nbDocuments > 1 ? 's' : ''} concordent avec votre profil.`
+            : verdict.statut === 'non_verifiable'
+              ? 'Aucune pièce transmise ne contenait de texte exploitable : la cohérence n’a pas pu être vérifiée.'
+              : `Écarts restants entre votre profil et les pièces transmises${parts.length ? ` : ${parts.join(', ')}` : ''}.`}
+        </p>
+        <p className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          C’est la seule information de cohérence partagée : ni le détail des écarts, ni les
+          vérifications faites avant l’envoi.
         </p>
       </CitizenCardBody>
     </CitizenCard>
@@ -224,7 +274,7 @@ function EcologieCard() {
       <CitizenCardHeader title="Impact écologique" icon={Leaf} />
       <CitizenCardBody>
         <p className="flex items-start gap-2 text-sm leading-relaxed text-muted-foreground">
-          <Leaf className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+          <Leaf className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
           En transmettant votre dossier entièrement en ligne, vous évitez l’impression et
           l’envoi postal de vos justificatifs papier.
         </p>
@@ -292,6 +342,18 @@ export default function SuiviDossierPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <CitizenPageHeader
+        // Aligné sur « Déposer un dossier » (`PageHeader`), qui rend son <h1>
+        // en `text-headline-lg-mobile md:text-display` avec la police sans.
+        // `CitizenPageHeader` part sur `font-display` + `sm:text-3xl` (30px,
+        // poids 600) : sans ces trois surcharges les deux titres du même
+        // parcours n'ont ni la même police, ni la même taille, ni la même
+        // graisse. `sm:text-display` remplace bien `sm:text-3xl` — tailwind-merge
+        // arbitre par groupe *et* par variante.
+        //
+        // Valeur littérale plutôt que le jeton `text-action` : la classe
+        // arbitraire est produite au scan des sources, donc elle apparaît sans
+        // redémarrer Vite, contrairement à une couleur ajoutée à la config.
+        titleClassName="font-sans text-[#102a74] sm:text-display"
         eyebrow="Où en êtes-vous"
         title="Suivre un dossier déposé"
         description="L’état d’avancement de votre dossier transmis à la CAF."
@@ -333,9 +395,12 @@ export default function SuiviDossierPage() {
           title="Aucun dossier envoyé pour le moment"
           description="Vous n’avez pas encore transmis de dossier à la CAF. Une fois envoyé, son suivi s’affichera ici."
           actions={
-            <Link to={ROUTES.dossier} className={citizenButton()}>
+            // Mêmes classes que l'appel à l'action de la barre latérale, pour
+            // que la seule sortie de cet écran vide se reconnaisse au premier
+            // coup d'œil comme le chemin vers le dépôt.
+            <Link to={ROUTES.dossier} className={citizenButton({ variant: 'marianne' })}>
               <Send aria-hidden="true" />
-              Envoyer un dossier
+              Déposer un dossier
             </Link>
           }
         />
@@ -353,7 +418,7 @@ export default function SuiviDossierPage() {
                     label={review.decision.outcome === 'validated' ? 'Validé' : 'Rejeté'}
                     className={
                       review.decision.outcome === 'validated'
-                        ? 'bg-emerald-50 text-emerald-700'
+                        ? 'bg-success-surface text-success'
                         : 'bg-surface text-muted-foreground'
                     }
                   />
@@ -368,6 +433,10 @@ export default function SuiviDossierPage() {
               </ol>
             </CitizenCardBody>
           </CitizenCard>
+
+          {review.inconsistency_verdict && (
+            <TransmittedVerdictCard verdict={review.inconsistency_verdict} />
+          )}
 
           {review.coherence &&
             (showCoherence ? (

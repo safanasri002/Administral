@@ -10,11 +10,14 @@ générique pointé sur leur base_url, car ils exposent une API compatible OpenA
 """
 import json
 import os
+import re
 from mistralai.client import Mistral
 from dotenv import load_dotenv
 from langsmith import traceable
 
+from app.core.config import settings
 from app.core.logger import logger
+from app.modules.ai import local_llm
 from . import budget
 
 # `openai` n'est utilisé que par les providers compatibles OpenAI (benchmarking) :
@@ -31,6 +34,18 @@ load_dotenv()
 #: 25 s : au-delà, le citoyen a de toute façon renoncé, et lui rendre « momentanément
 #: indisponible » vaut mieux que de tenir la ligne ouverte pour lui.
 _TIMEOUT_S = float(os.environ.get("CHATBOT_LLM_TIMEOUT_S", "25"))
+
+#: Le modèle qui RÉDIGE, et celui qui CLASSE. Ce sont deux métiers différents, d'où
+#: deux modèles — la distinction existait déjà dans `Settings`, l'assistant ne s'en
+#: servait simplement pas (il codait « small » en dur à cinq endroits).
+#:
+#: Rédiger une réponse à partir d'extraits, ou expliquer un article de loi sans le
+#: déformer, profite d'un modèle plus fort : c'est là que se joue la qualité perçue.
+#: Classer un message dans l'une de cinq intentions ne demande pas la même puissance ;
+#: y mettre le gros modèle allongerait CHAQUE tour, y compris ceux qui n'appellent
+#: ensuite aucune génération (documents, estimation).
+MODELE_GENERATION = settings.mistral_model
+MODELE_CLASSIFIEUR = settings.mistral_classifier_model
 
 _mistral_client = None
 _openai_compatible_clients = {}  # provider -> client OpenAI configuré
@@ -82,26 +97,40 @@ def get_openai_compatible_client(provider):
 
 
 @traceable(name="call_llm", run_type="llm")
-def call_llm(messages, model="mistral-small-latest", provider="mistral", json_mode=False, temperature=0.0):
+def call_llm(messages, model=None, provider="mistral", json_mode=False, temperature=0.0,
+             repli_local=True):
     """
     messages: liste de dicts [{"role": "system"|"user"|"assistant", "content": "..."}]
     provider: "mistral" (défaut, prod) ou un provider compatible OpenAI (ex: "groq")
               utilisé pour le benchmarking multi-LLM.
+    model: None = le modèle de génération configuré (`MODELE_GENERATION`). Un appelant
+           qui fait autre chose que rédiger — classer, par exemple — le dit
+           explicitement ; c'est le seul cas où ce paramètre se renseigne.
     json_mode: si True, force une sortie JSON valide (encore faut-il le demander
                explicitement dans le prompt, cf. doc du provider)
+    repli_local: si l'API Mistral refuse l'appel, rédiger avec le Mistral local
+                 (Ollama) plutôt que d'échouer. Un appelant qui a un meilleur
+                 secours que le modèle local — le classifieur d'intention et ses
+                 mots-clés, instantanés — passe False.
     Retourne: le texte de la réponse (str)
     """
+    model = model or MODELE_GENERATION
     kwargs = {}
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
     if provider == "mistral":
-        response = get_mistral_client().chat.complete(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            **kwargs,
-        )
+        try:
+            response = get_mistral_client().chat.complete(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                **kwargs,
+            )
+        except Exception as exc:  # noqa: BLE001 — quota, plan inactif, réseau, clé absente
+            if not (repli_local and settings.chatbot_local_fallback and local_llm.enabled()):
+                raise
+            return _repli_local(messages, json_mode, temperature, exc)
     else:
         response = get_openai_compatible_client(provider).chat.completions.create(
             model=model,
@@ -111,6 +140,90 @@ def call_llm(messages, model="mistral-small-latest", provider="mistral", json_mo
         )
     _comptabiliser(response, model)
     return response.choices[0].message.content
+
+
+#: Le contrat de `call_llm_structured`, imposé au modèle local : un 7B en JSON libre
+#: s'écarte trop souvent de la forme attendue pour qu'on la lui laisse deviner.
+_SCHEMA_REPONSE_LOCALE = {
+    "type": "object",
+    "properties": {
+        # Pas de "clarification" : un petit modèle qui interroge le citoyen invente
+        # volontiers le motif de sa question. Il répond, ou il dit qu'il ne sait pas.
+        "type": {"type": "string", "enum": ["answer"]},
+        "text": {"type": "string"},
+        "repondu": {"type": "boolean"},
+        "options": {"type": ["array", "null"], "items": {"type": "string"}},
+    },
+    "required": ["type", "text", "repondu"],
+}
+
+
+#: Rappel placé en DERNIER message : un 7B suit surtout ce qu'il vient de lire. Sans lui,
+#: il a affirmé qu'il fallait « être citoyen français » pour l'APL — faux, et absent des
+#: extraits. Sur des droits sociaux, mieux vaut un renvoi de trop qu'une règle inventée.
+_RAPPEL_MODELE_LOCAL = (
+    "Rappel strict : réponds UNIQUEMENT avec des informations écrites dans les extraits "
+    "ou les textes fournis ci-dessus, sans rien ajouter de tes connaissances. "
+    "S'ils ne répondent pas précisément à la question, n'essaie pas de répondre : indique "
+    "en une phrase ce qui manque et mets \"repondu\" à false. "
+    "Ne pose aucune question. Adresse-toi au citoyen en le vouvoyant, en français."
+)
+
+
+_NOMBRE = re.compile(r"\d+(?:[ \u00a0\u202f.,]\d+)*")
+
+
+def _nombres(texte: str) -> set[str]:
+    """Les nombres d'un texte, réduits à leurs chiffres (« 36,5 » → « 365 »)."""
+    return {re.sub(r"\D", "", n) for n in _NOMBRE.findall(texte or "")}
+
+
+def nombres_non_ancres(reponse: str, messages) -> set[str]:
+    """Nombres de la réponse absents de tout ce que le modèle a reçu.
+
+    Un téléphone, un montant, un délai ou un numéro d'article que rien ne contenait
+    est une invention — le modèle local a ainsi fourni un numéro de téléphone de la Caf
+    qui n'existait nulle part. Les nombres d'un seul chiffre sont ignorés : ce sont
+    les puces d'une énumération (« 1. », « 2. »)."""
+    recus = _nombres(" ".join(str(m.get("content", "")) for m in messages))
+    return {n for n in _nombres(reponse) if len(n) > 1 and n not in recus}
+
+
+def _repli_local(messages, json_mode, temperature, cause):
+    """Même réponse, autre moteur : le Mistral local quand l'API refuse l'appel.
+
+    Si le modèle local échoue lui aussi, c'est la panne d'ORIGINE qui remonte : c'est
+    elle que l'équipe doit voir, pas le symptôme du secours."""
+    logger.warn(
+        "chatbot: API Mistral indisponible, rédaction par le modèle local",
+        {"cause": f"{type(cause).__name__}: {str(cause)[:160]}"},
+    )
+    try:
+        brut = local_llm.chat(
+            [*messages, {"role": "user", "content": _RAPPEL_MODELE_LOCAL}],
+            json_schema=_SCHEMA_REPONSE_LOCALE if json_mode else None,
+            temperature=min(temperature, 0.1),
+        )
+    except Exception as exc_local:  # noqa: BLE001
+        logger.error("chatbot: modèle local indisponible lui aussi", {"error": str(exc_local)})
+        raise cause from exc_local
+
+    inventes = nombres_non_ancres(brut, messages)
+    if not inventes:
+        return brut
+    logger.warn(
+        "chatbot: réponse du modèle local écartée, nombres absents des textes fournis",
+        {"nombres": sorted(inventes)},
+    )
+    if json_mode:
+        # Même contrat, mais « non répondu » : l'appelant renvoie alors vers le canal
+        # officiel et consigne la question, comme pour toute réponse non fondée.
+        return json.dumps(
+            {"type": "answer", "repondu": False,
+             "text": "La réponse rédigée contenait des informations absentes des textes officiels."},
+            ensure_ascii=False,
+        )
+    raise cause
 
 
 def _comptabiliser(response, model) -> None:
@@ -161,7 +274,7 @@ def historique_de_confiance(conversation_history):
 
     Le schéma HTTP borne déjà tout cela. Ce filtre-ci existe parce que le schéma ne
     protège QUE la route HTTP, alors que ce moteur est explicitement prévu pour servir
-    un second canal sans compte (WhatsApp, cf. les docstrings du module) qui ne passera
+    un second canal sans compte (cf. les docstrings du module) qui ne passera
     pas par lui. La garantie doit tenir là où le prompt s'écrit, pas seulement à la
     porte d'entrée : un tour au rôle inconnu est écarté, jamais réinterprété."""
     propres = []
@@ -228,7 +341,7 @@ def _parse_structured(raw):
     return parsed
 
 
-def call_llm_structured(messages, model="mistral-small-latest", provider="mistral", temperature=0.0):
+def call_llm_structured(messages, model=None, provider="mistral", temperature=0.0):
     """Comme call_llm, mais force une sortie JSON avec le contrat
     {"type": "answer"|"clarification", "text": str, "options": list|None} et la parse.
     Si "options" est une liste (clarification à choix), EXPLAIN_OPTION et SKIP_OPTION sont

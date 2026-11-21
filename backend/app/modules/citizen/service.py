@@ -3,6 +3,7 @@
 The upload flow is the substance of this module, and its order is deliberate:
 
     store bytes → extract text → classify against checklist
+                → local analysis (metadata + facts, for inconsistency detection)
                 → record → if matched, flip the checklist item
                 → recompute application completeness
 
@@ -21,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.config import settings
+from app.core.logger import logger
+from app.modules.ai.inconsistency.service import analyse_document
 from app.modules.citizen import repository, storage
 from app.modules.citizen.checklist import APL_CHECKLIST, ChecklistTemplate
 from app.modules.citizen.classification import classify_document
@@ -79,6 +82,7 @@ def _to_document_schema(document: ApplicationDocument) -> CitizenDocumentSchema:
         extracted_text_preview=document.extracted_text_preview,
         classification=classification,
         classification_error=document.classification_error,
+        matched_checklist_item_id=document.matched_checklist_item_id,
     )
 
 
@@ -135,6 +139,25 @@ def upload_document(
     ] or list(APL_CHECKLIST)
     classification = classify_document(extraction.text, checklist)
 
+    # Facts for inconsistency detection, computed once here so a report never
+    # re-runs OCR. Reuses the extraction above; fail-safe like every stage.
+    try:
+        local_analysis = analyse_document(
+            data,
+            mime_type,
+            file_name,
+            path=stored_path,
+            local_text=extraction.local,
+            external_text=(
+                extraction.text
+                if extraction.method is not None and extraction.method.value == "mistral_ocr"
+                else None
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 — analysis must never cost an upload
+        logger.warn("Analyse locale du document impossible", {"error": str(exc)})
+        local_analysis = None
+
     document = ApplicationDocument(
         application_id=application.id,
         file_name=file_name,
@@ -157,6 +180,7 @@ def upload_document(
         },
         classification_error=classification.error,
         matched_checklist_item_id=classification.matched_checklist_document_id,
+        local_analysis=local_analysis,
     )
     repository.add_document(db, document)
 
@@ -204,19 +228,43 @@ def get_classification(db: Session, document_id: str) -> DocumentClassificationS
     return DocumentClassificationSchema.model_validate(document.classification)
 
 
-def get_document_file(db: Session, document_id: str) -> tuple[str, str, str]:
-    """Resolve a document's stored bytes for download/preview.
+def get_document_file(
+    db: Session, application_id: str, document_id: str
+) -> tuple[str, str, str]:
+    """Resolve a document's stored bytes so the citizen can re-read their piece.
 
     Returns ``(stored_path, mime_type, file_name)``. The stored path is a
     server-generated UUID name (see ``storage.store``) — never client input — so
     serving it carries no path-traversal risk. Only metadata is user-facing; the
     on-disk name never leaves the server.
+
+    Two conditions, both deliberate:
+
+    * The document is resolved **through its application**, not by id alone —
+      the same scoping the agent endpoint applies through the case. A document id
+      belonging to another dossier is not reachable by guessing it.
+    * Only a document the classifier **matched to a checklist item** is served.
+      A citizen consults the pieces of their dossier; a file the classifier could
+      not place is not one of them yet. Serving it would also mean serving
+      whatever was uploaded by mistake — a bank statement dropped on the wrong
+      screen — back out of the API, which is a needless exposure.
     """
     document = repository.get_document(db, document_id)
     if document is None:
         raise NotFoundError("Document introuvable.")
+
+    if document.application_id != application_id:
+        raise NotFoundError("Ce document n’appartient pas à ce dossier.")
+
+    if not document.matched_checklist_item_id:
+        raise ValidationError(
+            "Cette pièce n’a pas encore été rattachée à une ligne de votre "
+            "dossier : elle n’est pas consultable ici."
+        )
+
     if not Path(document.stored_path).is_file():
         raise NotFoundError("Le fichier de ce document est introuvable sur le stockage.")
+
     return document.stored_path, document.mime_type, document.file_name
 
 

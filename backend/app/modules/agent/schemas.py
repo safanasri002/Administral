@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 from app.modules.ai.fraud.schemas import FraudAnalysisSchema
+from app.modules.ai.inconsistency.schemas import SubmissionVerdict
 from app.modules.agent.models import (
     AnomalySeverity,
     CaseScoreBand,
@@ -53,7 +54,8 @@ class CaseCitizenSchema(CamelModel):
     first_name: str
     last_name: str
     email: str
-    birth_date: date
+    #: Null until the citizen declares it (the column is nullable, like the NIR).
+    birth_date: date | None = None
     masked_social_security_number: str
 
 
@@ -116,6 +118,61 @@ class CaseQueueStatsSchema(CamelModel):
     pending: int
     to_review_today: int
     citizens_tracked: int
+
+
+class ServiceBreakdownSchema(CamelModel):
+    """Case volume for one administration."""
+
+    service_id: str
+    label: str
+    count: int
+
+
+class MonthlyVolumeSchema(CamelModel):
+    """Submissions in one calendar month, keyed ``YYYY-MM``."""
+
+    month: str
+    count: int
+
+
+class CaseStatusBreakdownSchema(CamelModel):
+    """Case counts per lifecycle status.
+
+    Every status is present, zero included: the UI renders a fixed set of rows,
+    and an absent key would silently drop one rather than show it empty.
+    """
+
+    submitted: int
+    awaiting_documents: int
+    under_review: int
+    ready_for_decision: int
+    validated: int
+    rejected: int
+
+
+class AgentStatisticsSchema(CamelModel):
+    """Service-level indicators — ``GET /agent/stats/overview``.
+
+    Aggregated server-side and returned whole, for the same reason as
+    ``CaseQueueStatsSchema``: the queue endpoint is filtered and paginated, so
+    tallying rows in the browser would describe the current page rather than
+    the service.
+
+    The three averages are nullable on purpose. ``None`` means "nothing to
+    average yet" — no decision recorded, no completeness check run, no score
+    computed — which is not the same statement as ``0`` and must not be
+    rendered as one.
+    """
+
+    citizens_total: int
+    citizens_with_cases: int
+    cases_total: int
+    by_status: CaseStatusBreakdownSchema
+    by_service: list[ServiceBreakdownSchema]
+    monthly_submissions: list[MonthlyVolumeSchema]
+    average_processing_days: float | None = None
+    average_completion_rate: float | None = None
+    average_score: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +311,8 @@ class CaseDetailSchema(CamelModel):
     documents: list[CaseDocumentSchema]
     completeness_report: CompletenessReportSchema | None = None
     coherence_report: CoherenceReportSchema | None = None
+    #: Coherence of the documents as submitted — status and counts only.
+    inconsistency_verdict: SubmissionVerdict | None = None
     decision: CaseDecisionSchema | None = None
 
 

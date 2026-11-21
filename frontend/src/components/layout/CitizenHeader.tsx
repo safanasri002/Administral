@@ -59,7 +59,10 @@ export function CitizenHeader({ variant = 'full', onOpenMenu }: CitizenHeaderPro
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border/60 bg-background/90 px-4 backdrop-blur md:px-8">
+    // Pas de filet bas : sur le fond clair des pages il se lisait comme une
+    // ligne blanche parasite au défilement. C'est l'ombre douce qui détache la
+    // barre, comme sur l'en-tête public.
+    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 bg-background/90 px-4 shadow-soft backdrop-blur md:px-8">
       {variant === 'full' && onOpenMenu && (
         <button
           type="button"
@@ -74,13 +77,36 @@ export function CitizenHeader({ variant = 'full', onOpenMenu }: CitizenHeaderPro
       {/* On `full`, the sidebar already carries the mark on desktop (lg+) —
           shown here too so it's not missing on mobile, where the sidebar is a
           drawer. On `minimal` there is no sidebar at all, so it always shows. */}
+      {/* Toujours vers `home`, jamais vers `portal` : `portal` est le hub CAF,
+          et cliquer le logo depuis France Travail y atterrissait sans raison.
+          `HomeRoute` renvoie de lui-même un visiteur identifié vers la liste
+          des administrations, qui est bien son accueil. */}
       <Link
-        to={isAuthenticated ? ROUTES.portal : ROUTES.home}
-        className={cn('flex items-center gap-2.5', variant === 'full' && 'lg:hidden')}
+        to={ROUTES.home}
+        // `ml-2` : la marque respire un peu plus loin du bord que les 16px de
+        // rembourrage de l'en-tête, comme sur les autres barres.
+        className={cn('ml-2 flex items-center gap-2.5', variant === 'full' && 'lg:hidden')}
       >
-        <img src={logo} alt="Administral" className="size-9 shrink-0 object-contain" />
-        <span className="hidden font-display text-base font-extrabold tracking-tight text-ink sm:block">
-          ADMINISTRAL
+        <img src={logo} alt="Administral" className="size-11 shrink-0 object-contain" />
+        {/* Mot-symbole sur deux lignes, aux mesures exactes de l'en-tête public
+            (`LandingHeader`) : la signature qualifie la marque, elle ne doit
+            pas se lire comme un lien de plus, et la marque ne doit pas changer
+            de taille d'une interface à l'autre. */}
+        <span className="hidden leading-tight sm:block">
+          <span className="block font-display text-lg font-extrabold tracking-tight text-ink">
+            ADMINISTRAL
+          </span>
+          <span className="mt-0.5 block text-sm leading-tight text-muted-foreground">
+            République 5.0
+            {/* Nomme l'espace où l'on se trouve, une fois la session ouverte :
+                la même marque coiffe l'accueil public et l'espace citoyen. */}
+            {isAuthenticated && (
+              <>
+                <span aria-hidden="true" className="mx-1.5 text-border">|</span>
+                Espace Citoyen
+              </>
+            )}
+          </span>
         </span>
       </Link>
 
@@ -121,13 +147,12 @@ export function CitizenHeader({ variant = 'full', onOpenMenu }: CitizenHeaderPro
                 >
                   <span className="hidden text-right sm:block">
                     {displayName ? (
-                      <span className="block text-sm font-semibold leading-none text-ink">
+                      <span className="block text-label-md leading-none text-ink">
                         {displayName}
                       </span>
                     ) : (
                       <Skeleton className="mb-1 h-3 w-24" />
                     )}
-                    <span className="block text-xs text-muted-foreground">Mon compte</span>
                   </span>
                   <Avatar className="border-brand/20">
                     <AvatarFallback className="bg-brand-soft text-brand">
@@ -140,7 +165,7 @@ export function CitizenHeader({ variant = 'full', onOpenMenu }: CitizenHeaderPro
                   </Avatar>
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="rounded-2xl border-border/60 bg-card p-1.5 shadow-lg">
+              <DropdownMenuContent align="end" className="rounded-2xl border-border/60 bg-card p-1.5 shadow-soft">
                 <DropdownMenuLabel className="text-muted-foreground">Mon espace</DropdownMenuLabel>
                 <DropdownMenuItem asChild className="rounded-xl focus:bg-brand-soft focus:text-brand">
                   <Link to={ROUTES.profile}>Mon profil</Link>
@@ -161,7 +186,7 @@ export function CitizenHeader({ variant = 'full', onOpenMenu }: CitizenHeaderPro
         ) : (
           <Link
             to={ROUTES.login}
-            className="inline-flex items-center gap-2 rounded-md bg-marianne px-5 py-2.5 text-sm font-semibold text-marianne-foreground transition-opacity hover:opacity-90"
+            className="inline-flex items-center gap-2 rounded-md bg-marianne px-5 py-2.5 text-label-md text-marianne-foreground transition-opacity hover:opacity-90"
           >
             <UserRound className="size-4" aria-hidden="true" />
             Se connecter

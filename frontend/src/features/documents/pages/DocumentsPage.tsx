@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useChatbotUiStore } from '@/features/chatbot/store/chatbotUiStore';
+import { DocumentViewer } from '@/features/documents/components/DocumentViewer';
 import { documentService } from '@/services/documentService';
 import type { CitizenDocument, DocumentAnalysisStatus, ProcessStatus } from '@/types';
 import { useVoicePage } from '@/features/voice/context/VoicePageContext';
@@ -39,6 +40,9 @@ export default function DocumentsPage() {
   const [documents, setDocuments] = useState<CitizenDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // One dialog for the whole table: switching pieces swaps the fetch instead of
+  // remounting, so only one object URL is ever alive.
+  const [openDocument, setOpenDocument] = useState<CitizenDocument | null>(null);
   const [docQuestion, setDocQuestion] = useState('');
   const askAssistant = useChatbotUiStore((state) => state.ask);
 
@@ -90,6 +94,7 @@ export default function DocumentsPage() {
   return (
     <div className="mx-auto max-w-container">
       <CitizenPageHeader
+        backTo={ROUTES.portal}
         eyebrow="Vos pièces"
         title="Mes documents"
         description="Retrouvez vos pièces justificatives et la documentation officielle."
@@ -105,13 +110,13 @@ export default function DocumentsPage() {
         <TabsList className="border-border/60">
           <TabsTrigger
             value="files"
-            className="text-sm font-semibold text-muted-foreground data-[state=active]:border-brand data-[state=active]:text-brand"
+            className="text-label-md text-muted-foreground data-[state=active]:border-brand data-[state=active]:text-brand"
           >
             Mes pièces
           </TabsTrigger>
           <TabsTrigger
             value="docs"
-            className="text-sm font-semibold text-muted-foreground data-[state=active]:border-brand data-[state=active]:text-brand"
+            className="text-label-md text-muted-foreground data-[state=active]:border-brand data-[state=active]:text-brand"
           >
             Documentation
           </TabsTrigger>
@@ -146,20 +151,39 @@ export default function DocumentsPage() {
                     {documents.map((doc) => (
                       <tr key={doc.id} className="transition-colors hover:bg-surface">
                         <td className="px-4 py-4 sm:px-6">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              window.open(
-                                documentService.previewUrl(doc.id),
-                                '_blank',
-                                'noopener,noreferrer',
-                              )
-                            }
-                            className="flex items-center gap-3 text-left text-sm font-semibold text-brand hover:underline"
-                          >
-                            <FileText className="size-4 shrink-0" aria-hidden="true" />
-                            {doc.fileName}
-                          </button>
+                          {/*
+                            Only a piece the classifier placed on a checklist
+                            line can be re-read. An unplaced file is not yet a
+                            piece of the dossier — it is rendered as plain text
+                            with the reason, rather than as a link that would
+                            fail on click. The server enforces the same rule.
+                          */}
+                          {doc.matchedChecklistItemId ? (
+                            <button
+                              type="button"
+                              onClick={() => setOpenDocument(doc)}
+                              aria-label={`Consulter ${doc.fileName}`}
+                              className="flex items-center gap-3 text-left text-label-md text-brand hover:underline"
+                            >
+                              <FileText className="size-4 shrink-0" aria-hidden="true" />
+                              {doc.fileName}
+                            </button>
+                          ) : (
+                            <span className="flex items-start gap-3 text-left">
+                              <FileText
+                                className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                                aria-hidden="true"
+                              />
+                              <span>
+                                <span className="block text-label-md text-foreground">
+                                  {doc.fileName}
+                                </span>
+                                <span className="block text-sm text-muted-foreground">
+                                  Pas encore rattachée à une pièce demandée
+                                </span>
+                              </span>
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-4 sm:px-6 text-sm text-muted-foreground">{doc.mimeType}</td>
                         <td className="px-4 py-4 sm:px-6 text-sm text-muted-foreground">
@@ -206,7 +230,7 @@ export default function DocumentsPage() {
         <TabsContent value="docs">
           <div className="flex flex-col gap-6">
             <div className="rounded-2xl bg-marianne p-8 text-marianne-foreground">
-              <h2 className="font-display text-2xl font-extrabold leading-tight">
+              <h2 className="font-display text-headline-lg-mobile leading-tight">
                 Centre de documentation
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-relaxed text-marianne-foreground/80">
@@ -258,6 +282,8 @@ export default function DocumentsPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <DocumentViewer document={openDocument} onClose={() => setOpenDocument(null)} />
     </div>
   );
 }
@@ -266,7 +292,7 @@ function Th({ children }: { children: React.ReactNode }) {
   return (
     <th
       scope="col"
-      className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground sm:px-6"
+      className="px-4 py-3 text-left text-label-sm uppercase tracking-wider text-muted-foreground sm:px-6"
     >
       {children}
     </th>

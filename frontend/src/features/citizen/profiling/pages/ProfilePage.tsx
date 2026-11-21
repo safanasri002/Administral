@@ -1,6 +1,7 @@
 import { CircleEllipsis, HomeIcon, Pencil, UserRound, UsersRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { ROUTES } from '@/app/router/paths';
 import { CitizenAlert } from '@/components/citizen/CitizenAlert';
 import { citizenButton } from '@/components/citizen/citizenButton';
 import { CitizenCard, CitizenCardBody, CitizenCardHeader } from '@/components/citizen/CitizenCard';
@@ -240,6 +241,7 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-container">
       <CitizenPageHeader
+        backTo={ROUTES.portal}
         eyebrow="Votre espace"
         title="Mon profil citoyen"
         description="Gérez vos informations personnelles et vos préférences."
@@ -458,7 +460,7 @@ function ChampAffiche({ label, valeur, nouveau = false }: Omit<ChampProgressif, 
         nouveau && 'animate-in fade-in slide-in-from-bottom-2 -m-2 rounded-lg bg-brand-soft p-2',
       )}
     >
-      <dt className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <dt className="mb-1 text-label-sm uppercase tracking-wide text-muted-foreground">
         {label}
       </dt>
       <dd className="text-sm text-ink">

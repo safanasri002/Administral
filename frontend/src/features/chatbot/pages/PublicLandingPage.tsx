@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 
+import { ROUTES } from '@/app/router/paths';
 import { CitizenFooter } from '@/components/layout/CitizenFooter';
+import { cn } from '@/lib/utils';
 import { SkipLink } from '@/components/layout/SkipLink';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ChatWindow } from '@/features/chatbot/components/ChatWindow';
@@ -11,13 +14,19 @@ import { LandingAI } from '@/features/chatbot/components/landing/LandingAI';
 import { LandingFeatures } from '@/features/chatbot/components/landing/LandingFeatures';
 import { LandingHeader } from '@/features/chatbot/components/landing/LandingHeader';
 import { LandingHero } from '@/features/chatbot/components/landing/LandingHero';
+import { LandingInnovation } from '@/features/chatbot/components/landing/LandingInnovation';
+import { LandingStatsMarquee } from '@/features/chatbot/components/landing/LandingStatsMarquee';
 import { LandingServices } from '@/features/chatbot/components/landing/LandingServices';
 import { LandingTrust } from '@/features/chatbot/components/landing/LandingTrust';
+import { Reveal } from '@/features/chatbot/components/landing/Reveal';
 import { VoiceAssistantProvider } from '@/features/voice/components/VoiceAssistantProvider';
+import { VoiceAssistantPanel } from '@/features/voice/components/VoiceAssistantPanel';
+import { VoiceOnboardingDialog } from '@/features/voice/components/VoiceOnboardingDialog';
 import { VoiceStatusStrip } from '@/features/voice/components/VoiceStatusStrip';
 import { VoicePageProvider, useVoicePage } from '@/features/voice/context/VoicePageContext';
 import { useVoiceComposer } from '@/features/voice/hooks/useVoiceComposer';
 import { useVoiceStore } from '@/features/voice/store/voiceStore';
+import { useSessionStore } from '@/store/sessionStore';
 
 type AssistMode = 'voice' | 'text';
 
@@ -45,10 +54,24 @@ type AssistMode = 'voice' | 'text';
  * this route too, instead of only inside `AppShell`.
  */
 export default function PublicLandingPage() {
+  const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const role = useSessionStore((state) => state.role);
+
+  /*
+   * Dernière porte de l'espace citoyen, et la seule qui ne passe pas par
+   * `CitizenAppShell` : un agent connecté est renvoyé au back-office ici
+   * aussi, sans quoi le verrou posé sur la coque se contournerait par
+   * l'accueil.
+   */
+  if (isAuthenticated && (role === 'agent' || role === 'admin')) {
+    return <Navigate to={ROUTES.agent} replace />;
+  }
+
   return (
     <VoicePageProvider>
       <VoiceAssistantProvider>
         <LandingContent />
+        <VoiceAssistantPanel />
       </VoiceAssistantProvider>
     </VoicePageProvider>
   );
@@ -61,6 +84,8 @@ function LandingContent() {
   const disableVoiceMode = useVoiceStore((state) => state.disableVoiceMode);
 
   const [started, setStarted] = useState(false);
+  /** Fil encore vide : rien n'a été demandé, la page n'affiche que ses amorces. */
+  const isEmptyThread = controller.messages.length === 0;
   const [assistMode, setAssistMode] = useState<AssistMode>('text');
 
   const {
@@ -111,6 +136,19 @@ function LandingContent() {
     setStarted(true);
   };
 
+  /**
+   * Leaves the embedded assistant and puts the landing page back.
+   *
+   * `/` renders the assistant in place instead of navigating, so browser Back
+   * would leave the site entirely rather than close it — this is the only way
+   * out, and without it a visitor who clicked the Mistral bubble was stuck.
+   */
+  const handleClose = () => {
+    disableVoiceMode();
+    stopSpeaking();
+    setStarted(false);
+  };
+
   // ── Consume queued questions from the voice assistant ─────────────
   const pendingQuestion = useChatbotUiStore((s) => s.pendingQuestion);
   const consumePendingQuestion = useChatbotUiStore((s) => s.consumePendingQuestion);
@@ -118,49 +156,108 @@ function LandingContent() {
   useEffect(() => {
     if (pendingQuestion === null) return;
     const q = consumePendingQuestion();
-    if (q) controller.send(q);
+    if (!q) return;
+    // Ouvrir l'assistant en même temps qu'on lui parle : cette page n'a pas de
+    // panneau flottant, la question partirait sinon derrière la page vitrine,
+    // sans que rien à l'écran ne bouge. Vaut pour les boutons « assistant » des
+    // cartes de service comme pour les questions posées à la voix.
+    setStarted(true);
+    controller.send(q);
   }, [pendingQuestion, consumePendingQuestion, controller]);
 
   return (
     <div className="citizen-scope flex min-h-screen flex-col bg-background font-sans">
       <SkipLink />
-      <LandingHeader />
+      <VoiceOnboardingDialog />
+      <LandingHeader onBrandClick={started ? handleClose : undefined} />
 
-      <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className={cn('flex flex-1 flex-col focus:outline-none', started && 'assistant-backdrop')}
+      >
         {started ? (
-          <div className="mx-auto flex w-full max-w-container flex-col px-margin-mobile py-8 md:px-gutter">
-            <div className="mb-6 text-center">
-              <h1 className="font-display text-2xl font-extrabold text-ink">
-                Comment pouvons-nous vous aider ?
-              </h1>
-              <p className="mx-auto mt-2 max-w-form text-muted-foreground">
-                Posez vos questions sur votre éligibilité, une démarche ou un document — sans
-                avoir besoin de créer de compte.
-              </p>
-            </div>
+          /* `flex-1` en cascade jusqu'au composeur : la colonne occupe toute la
+             hauteur laissée par l'en-tête, donc la barre de saisie tombe en bas
+             de l'écran même quand rien n'a encore été demandé. */
+          <div className="mx-auto flex w-full max-w-container flex-1 flex-col px-margin-mobile py-8 md:px-gutter">
+            {/* Sur un fil vide, cette cale prend la moitié du vide restant —
+                l'autre moitié revient au `flex-1` de la fenêtre de chat. Titre
+                et amorces tombent donc au milieu de l'écran plutôt que collés
+                sous l'en-tête. Dès le premier message, la cale disparaît et le
+                fil reprend toute la hauteur, en partant du haut. */}
+            {isEmptyThread && <div className="flex-1" aria-hidden="true" />}
+
+            {/* Accroche d'ouverture, retirée dès la première question : elle
+                invite à parler, et une fois la conversation lancée elle ne fait
+                plus que voler de la hauteur au fil. `ChatWindow` porte son
+                propre `h1` (lecteurs d'écran), la page ne reste donc jamais
+                sans titre. Ni « Retour à l'accueil » ni croix de fermeture : la
+                marque, en haut de barre, est la seule sortie. */}
+            {isEmptyThread && (
+              <div className="mb-6 text-center">
+                {/* Décoratif : l'animation occupe la place que tenait la
+                  mascotte dans l'état vide, mais au-dessus du titre, où elle
+                  accompagne la question au lieu de la répéter. */}
+              <img
+                src="/chat_bleu.gif"
+                alt=""
+                aria-hidden="true"
+                className="mx-auto mb-2 h-24 w-auto object-contain"
+              />
+
+              <h1 className="font-display text-headline-lg-mobile text-ink">
+                  Comment pouvons-nous vous aider ?
+                </h1>
+                <p className="mx-auto mt-2 max-w-form text-muted-foreground">
+                  Posez vos questions sur votre éligibilité, une démarche ou un document — sans
+                  avoir besoin de créer de compte.
+                </p>
+              </div>
+            )}
             <VoiceStatusStrip
               status={voiceStatus}
               transcript={transcript}
               error={voiceError}
               onStopSpeaking={stopSpeaking}
             />
-            <ChatWindow controller={controller} onVoiceInput={toggleRecording} isRecording={isRecording} />
+            <ChatWindow
+              controller={controller}
+              variant="spotlight"
+              onVoiceInput={toggleRecording}
+              isRecording={isRecording}
+            />
           </div>
         ) : (
           <>
             <LandingHero onStart={() => handleStart('text')} />
-            <LandingServices />
-            <LandingFeatures
-              onStartChat={() => handleStart('text')}
-              onStartVoice={() => handleStart('voice')}
-            />
-            <LandingAI />
-            <LandingTrust />
+            <LandingStatsMarquee />
+            <Reveal>
+              <LandingServices />
+            </Reveal>
+            <Reveal>
+              <LandingFeatures
+                onStartChat={() => handleStart('text')}
+                onStartVoice={() => handleStart('voice')}
+              />
+            </Reveal>
+            <Reveal>
+              <LandingInnovation />
+            </Reveal>
+            <Reveal>
+              <LandingAI />
+            </Reveal>
+            <Reveal>
+              <LandingTrust />
+            </Reveal>
           </>
         )}
       </main>
 
-      <CitizenFooter />
+      {/* Page d'accueil seulement : sous l'assistant, le pied de page annonçait
+          une fin de page là où la conversation continue, et poussait la zone de
+          saisie hors de l'écran à chaque nouveau message. */}
+      {!started && <CitizenFooter />}
 
       {/* Hidden once the embedded assistant is showing: the Mistral bubble
           would then just re-trigger what is already on screen. */}

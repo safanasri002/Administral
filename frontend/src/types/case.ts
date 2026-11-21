@@ -1,6 +1,7 @@
 import type { AdministrationId } from './common';
 import type { CitizenDocument } from './document';
 import type { HouseholdComposition, HousingDetails } from './profile';
+import type { SubmissionVerdict } from '@/services/inconsistencyService';
 
 /**
  * The `Case` aggregate — a citizen application *after* the platform pipeline
@@ -38,6 +39,9 @@ export interface Case {
   completenessReport?: CompletenessReport;
   /** Absent until the coherence stage has run. */
   coherenceReport?: CoherenceReport;
+  /** Coherence of the documents as submitted, frozen at submission: status and
+   *  counts only. Null for cases submitted before the verdict existed. */
+  inconsistencyVerdict?: SubmissionVerdict | null;
   /** Set once an agent has recorded a decision. */
   decision?: CaseDecision;
 }
@@ -72,7 +76,8 @@ export interface CaseCitizen {
   firstName: string;
   lastName: string;
   email: string;
-  birthDate: string;
+  /** Null until the citizen declares it. */
+  birthDate: string | null;
   /** NIR, pre-masked by the backend. The frontend never receives the full number. */
   maskedSocialSecurityNumber: string;
 }

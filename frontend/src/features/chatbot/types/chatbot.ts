@@ -53,9 +53,10 @@ export interface ChatbotPendingClarification {
   /**
    * Étape du dialogue, présente uniquement pour les questions posées par le code
    * et non par le modèle — la date d'une décision contestée se demande en deux
-   * temps. Le client la renvoie telle quelle, il n'a pas à l'interpréter.
+   * temps, et le profil déjà enregistré d'un citoyen connecté lui est relu avant
+   * d'être utilisé. Le client la renvoie telle quelle, il n'a pas à l'interpréter.
    */
-  step?: 'date_choix' | 'date_valeur' | 'date_valeur_2' | null;
+  step?: 'date_choix' | 'date_valeur' | 'date_valeur_2' | 'profil_confirmation' | null;
 }
 
 /**
@@ -158,7 +159,22 @@ export interface ChatbotResponse {
  * bubble rendering (suggestions, recommendation cards) keeps working unchanged
  * and only the citations are new.
  */
+/**
+ * Le fichier joint à un tour, tel qu'il s'affiche dans le fil.
+ *
+ * Des métadonnées, pas le fichier : une fois envoyé au serveur, l'objet `File`
+ * n'a plus d'utilité côté vue, et le garder ferait vivre le contenu du CV dans
+ * l'état de la conversation aussi longtemps que la page est ouverte.
+ */
+export interface ChatbotAttachment {
+  name: string;
+  /** Taille en octets, telle que rapportée par le `File` d'origine. */
+  size: number;
+}
+
 export interface ChatbotMessage extends ChatMessage {
+  /** Pièce jointe envoyée avec ce tour — un CV, sur le coach France Travail. */
+  attachment?: ChatbotAttachment;
   /** Present on assistant turns that were grounded in retrieved documents. */
   sources?: ChatbotSource[];
   /** L'action proposée sous cette réponse, le cas échéant. */

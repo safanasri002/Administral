@@ -5,9 +5,11 @@ FROM python:3.11-slim
 WORKDIR /app/backend
 
 # libgl1/libglib2.0-0: runtime shared libraries opencv-python-headless still
-# dlopen()s even in headless mode.
+# dlopen()s even in headless mode. tesseract-ocr(-fra) and exiftool keep OCR and
+# metadata extraction inside this container (ai.inconsistency), not a cloud API.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+       tesseract-ocr tesseract-ocr-fra libimage-exiftool-perl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./requirements.txt

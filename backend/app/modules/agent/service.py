@@ -8,11 +8,13 @@ a query nor a request handler.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationError
 from app.core.security import mask_social_security_number
+from app.modules.ai.inconsistency.schemas import SubmissionVerdict
 from app.modules.agent import assessment as assessment_service
 from app.modules.agent import repository
 from app.modules.agent.evidence import extract_blocking_evidence, extract_supporting_evidence
@@ -25,6 +27,7 @@ from app.modules.audit.models import AuditAction
 from app.modules.auth.models import User
 from app.modules.notifications import service as notifications_service
 from app.modules.agent.schemas import (
+    AgentStatisticsSchema,
     CaseCitizenSchema,
     CaseDecisionSchema,
     CaseDetailSchema,
@@ -33,7 +36,10 @@ from app.modules.agent.schemas import (
     CaseQueueStatsSchema,
     CaseScoreSchema,
     CaseServiceSchema,
+    CaseStatusBreakdownSchema,
     CaseSummarySchema,
+    MonthlyVolumeSchema,
+    ServiceBreakdownSchema,
     CoherenceAnomalySchema,
     CoherenceReportSchema,
     CompletenessItemSchema,
@@ -166,6 +172,43 @@ def _to_decision_schema(decision: CaseDecisionModel) -> CaseDecisionSchema:
     )
 
 
+def get_case_document_file(db: Session, case_id: str, document_id: str) -> tuple[str, str, str]:
+    """Resolve one case document's bytes, for an agent to read the piece itself.
+
+    Returns ``(stored_path, mime_type, file_name)``.
+
+    The document is looked up **through its case**, never by id alone: an agent
+    is authorised to read the dossiers in the queue, and scoping the lookup this
+    way means a document id belonging to another case cannot be fetched by
+    guessing it. The path returned is the server-generated name written by
+    ``citizen.storage.store`` — never client input — so serving it carries no
+    path-traversal risk.
+
+    ``NotFoundError`` covers all four ways this can fail (unknown case, document
+    not in that case, no stored path, file gone from storage) on purpose: an
+    agent gets one honest "cette pièce n'est pas consultable" either way, and
+    the distinction between them is a server-side concern.
+    """
+    case = repository.find_case_by_id(db, case_id)
+    if case is None:
+        raise NotFoundError(f"Aucun dossier ne correspond à l’identifiant « {case_id} ».")
+
+    document = next((doc for doc in case.documents if doc.id == document_id), None)
+    if document is None:
+        raise NotFoundError("Cette pièce n’appartient pas à ce dossier.")
+
+    if not document.stored_path:
+        raise NotFoundError(
+            "Le fichier de cette pièce n’a pas été conservé : le dossier a été "
+            "déposé avant que les pièces ne soient rattachées au dossier agent."
+        )
+
+    if not Path(document.stored_path).is_file():
+        raise NotFoundError("Le fichier de cette pièce est introuvable sur le stockage.")
+
+    return document.stored_path, document.mime_type, document.file_name
+
+
 def get_case(db: Session, case_id: str) -> CaseDetailSchema:
     """One case in full. Backs ``GET /agent/cases/{case_id}``."""
     case = repository.find_case_by_id(db, case_id)
@@ -227,6 +270,11 @@ def get_case(db: Session, case_id: str) -> CaseDetailSchema:
         )
 
     return CaseDetailSchema(
+        inconsistency_verdict=(
+            SubmissionVerdict.model_validate(case.inconsistency_verdict)
+            if case.inconsistency_verdict
+            else None
+        ),
         id=case.id,
         application_number=case.application_number,
         citizen=CaseCitizenSchema(
@@ -403,4 +451,52 @@ def get_queue_stats(db: Session) -> CaseQueueStatsSchema:
         pending=pending,
         to_review_today=to_review_today,
         citizens_tracked=citizens_tracked,
+    )
+
+
+#: How far back the submissions chart reaches. Twelve months so the series
+#: always spans a full year of seasonality rather than a partial one.
+STATISTICS_MONTHS = 12
+
+
+def get_statistics_overview(db: Session) -> AgentStatisticsSchema:
+    """Service-level indicators. Backs ``GET /agent/stats/overview``.
+
+    Read-only: every figure is an aggregate over rows the instruction workflow
+    already writes. Nothing here creates, mutates or interprets a case — adding
+    a statistic must never become a reason for the queue to behave differently.
+    """
+    status_counts = repository.count_cases_by_status(db)
+
+    # Absent status → 0. The schema declares all six, so a status nobody has
+    # reached yet renders as an empty row instead of vanishing from the table.
+    by_status = CaseStatusBreakdownSchema(
+        submitted=status_counts.get(CaseStatus.submitted, 0),
+        awaiting_documents=status_counts.get(CaseStatus.awaiting_documents, 0),
+        under_review=status_counts.get(CaseStatus.under_review, 0),
+        ready_for_decision=status_counts.get(CaseStatus.ready_for_decision, 0),
+        validated=status_counts.get(CaseStatus.validated, 0),
+        rejected=status_counts.get(CaseStatus.rejected, 0),
+    )
+
+    return AgentStatisticsSchema(
+        citizens_total=repository.count_citizens(db),
+        citizens_with_cases=repository.count_citizens_with_cases(db),
+        # Summed from the breakdown rather than counted again: two queries could
+        # disagree under concurrent writes, and the table must equal its total.
+        cases_total=sum(status_counts.values()),
+        by_status=by_status,
+        by_service=[
+            ServiceBreakdownSchema(service_id=service_id, label=label, count=count)
+            for service_id, label, count in repository.count_cases_by_service(db)
+        ],
+        monthly_submissions=[
+            MonthlyVolumeSchema(month=month, count=count)
+            for month, count in repository.count_submissions_by_month(
+                db, months=STATISTICS_MONTHS
+            )
+        ],
+        average_processing_days=repository.average_processing_days(db),
+        average_completion_rate=repository.average_completion_rate(db),
+        average_score=repository.average_score(db),
     )

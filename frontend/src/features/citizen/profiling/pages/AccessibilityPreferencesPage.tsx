@@ -1,4 +1,5 @@
 import { APP_CONFIG } from '@/app/config/app';
+import { ROUTES } from '@/app/router/paths';
 import { CitizenAlert } from '@/components/citizen/CitizenAlert';
 import { CitizenPageHeader } from '@/components/citizen/CitizenPageHeader';
 import { ACCESSIBILITY_OPTIONS } from '@/features/citizen/profiling/utils/accessibilityOptions';
@@ -18,6 +19,7 @@ export default function AccessibilityPreferencesPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <CitizenPageHeader
+        backTo={ROUTES.profile}
         eyebrow="Confort de lecture"
         title="Préférences d’accessibilité"
         description="Personnalisez l’interface selon vos besoins. Ces réglages sont conservés sur cet appareil."
@@ -37,20 +39,20 @@ export default function AccessibilityPreferencesPage() {
             return (
               <div
                 key={option.key}
-                className="flex items-start justify-between gap-4 rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all duration-300 hover:border-brand/30 hover:shadow-lg"
+                className="flex items-start justify-between gap-4 rounded-2xl border border-border/60 bg-card p-6 shadow-soft transition-all duration-300 hover:border-brand/30 hover:shadow-soft-hover"
               >
                 <div className="min-w-0 flex-1">
                   <label htmlFor={id} className="flex cursor-pointer items-center gap-3">
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand-soft text-brand">
                       <option.icon className="size-4" aria-hidden="true" />
                     </span>
-                    <span className="font-display text-sm font-bold text-ink">{option.label}</span>
+                    <span className="font-display text-label-md text-ink">{option.label}</span>
                   </label>
                   <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
                     {option.description}
                   </p>
                   {!option.affectsRendering && (
-                    <p className="mt-2 inline-flex rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                    <p className="mt-2 inline-flex rounded-full bg-surface px-2.5 py-1 text-label-sm text-muted-foreground">
                       Disponible prochainement
                     </p>
                   )}

@@ -118,7 +118,18 @@ async def generer_tour(profil: ProfilPartiel, historique: list[dict]) -> tuple[d
     `APL_ALLOW_FALLBACK=true` — sinon on lève LLMError plutôt que de mentir).
     """
     if MISTRAL_API_KEY:
-        return await _appeler_mistral(profil, historique), "llm"
+        try:
+            return await _appeler_mistral(profil, historique), "llm"
+        except LLMError as exc:
+            # Une clé présente mais refusée (quota, plan inactif, réseau) bloquait
+            # l'onboarding même quand le repli est explicitement autorisé.
+            if not ALLOW_FALLBACK:
+                raise
+            logger.warning(
+                "Mistral injoignable → fallback déterministe (autorisé par "
+                "MISTRAL_ALLOW_FALLBACK=true) : %s", exc,
+            )
+            return _regle_deterministe(profil, historique), "fallback"
 
     if not ALLOW_FALLBACK:
         raise LLMError(

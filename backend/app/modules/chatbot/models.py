@@ -3,7 +3,7 @@
 The RAG engine (`rag/orchestrator.py`, `service.answer_question`) stays exactly
 as stateless as designed: it takes the full history as input on every call and
 keeps nothing between requests, so the same engine still serves a session-free
-channel (WhatsApp) unchanged. This table exists only so the web UI can show an
+channel unchanged. This table exists only so the web UI can show an
 authenticated citizen their conversation again after they navigate away from
 `/chat` and back — nothing here feeds back into the engine's own state.
 

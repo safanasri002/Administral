@@ -37,3 +37,23 @@ def test_unparseable_input_is_fully_masked() -> None:
     """
     assert mask_social_security_number("abc") == MASKED_PLACEHOLDER
     assert mask_social_security_number("") == MASKED_PLACEHOLDER
+
+
+def test_mask_undeclared_nir() -> None:
+    """A citizen who never declared a NIR (the column is nullable) must not
+    crash the agent portal — it reads as undeclared, not as a masked number."""
+    from app.core.security import UNDECLARED_PLACEHOLDER, mask_social_security_number
+
+    assert mask_social_security_number(None) == UNDECLARED_PLACEHOLDER
+
+
+def test_case_citizen_without_birth_date() -> None:
+    """A citizen who never declared a birth date (nullable column) must not
+    break the agent queue — the same trap as the undeclared NIR."""
+    from app.modules.agent.schemas import CaseCitizenSchema
+
+    citizen = CaseCitizenSchema(
+        id="c1", first_name="Camille", last_name="Durand", email="s@n.fr",
+        birth_date=None, masked_social_security_number="Non renseigné",
+    )
+    assert citizen.birth_date is None

@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/utils';
 import type { CoherenceReport, CompletenessReport } from '@/types';
+import type { SubmissionVerdict } from '@/services/inconsistencyService';
 import {
   ANOMALY_TONE,
   REPORT_OUTCOME_LABEL,
@@ -22,17 +23,27 @@ import {
  * them, it only lays them out.
  */
 
+/**
+ * Drops to `h3` when the card sits inside a titled group, so the outline stays
+ * nested rather than flattening two levels onto `h2`.
+ */
+type ReportHeadingLevel = 'h2' | 'h3';
+
 export interface CompletenessReportCardProps {
   report?: CompletenessReport;
+  headingLevel?: ReportHeadingLevel;
 }
 
-export function CompletenessReportCard({ report }: CompletenessReportCardProps) {
+export function CompletenessReportCard({
+  report,
+  headingLevel = 'h2',
+}: CompletenessReportCardProps) {
   return (
     <Card>
       <CardHeader>
         <SectionHeader
           title="Contrôle de complétude"
-          as="h2"
+          as={headingLevel}
           action={
             report && (
               <Badge tone={REPORT_OUTCOME_TONE[report.outcome]}>
@@ -104,15 +115,80 @@ export function CompletenessReportCard({ report }: CompletenessReportCardProps) 
 
 export interface CoherenceReportCardProps {
   report?: CoherenceReport;
+  headingLevel?: ReportHeadingLevel;
 }
 
-export function CoherenceReportCard({ report }: CoherenceReportCardProps) {
+const VERDICT_TONE: Record<SubmissionVerdict['statut'], 'success' | 'warning' | 'neutral'> = {
+  coherent: 'success',
+  ecarts_non_resolus: 'warning',
+  non_verifiable: 'neutral',
+};
+
+interface InconsistencyVerdictCardProps {
+  verdict: SubmissionVerdict | null | undefined;
+  headingLevel?: 'h2' | 'h3';
+}
+
+/**
+ * Cohérence des pièces telles que soumises : un verdict figé à l'envoi, sans
+ * détail. Le citoyen a pu vérifier et corriger son dossier avant l'envoi ; ces
+ * vérifications lui appartiennent et ne remontent pas ici — seul l'état final
+ * est communiqué (minimisation des données).
+ */
+export function InconsistencyVerdictCard({
+  verdict,
+  headingLevel = 'h2',
+}: InconsistencyVerdictCardProps) {
+  const label = !verdict
+    ? null
+    : verdict.statut === 'coherent'
+      ? 'Pièces cohérentes'
+      : verdict.statut === 'non_verifiable'
+        ? 'Non vérifiable'
+        : `${verdict.nbEcarts} écart${verdict.nbEcarts > 1 ? 's' : ''} non résolu${verdict.nbEcarts > 1 ? 's' : ''}`;
+  return (
+    <Card>
+      <CardHeader>
+        <SectionHeader
+          title="Cohérence des pièces soumises"
+          as={headingLevel}
+          action={verdict && label && <Badge tone={VERDICT_TONE[verdict.statut]}>{label}</Badge>}
+        />
+      </CardHeader>
+      <CardContent className="space-y-2 text-body-sm text-on-surface-variant">
+        {!verdict ? (
+          <p>Aucun verdict figé pour ce dossier (soumis avant la mise en place du contrôle).</p>
+        ) : (
+          <>
+            {verdict.statut === 'ecarts_non_resolus' && (
+              <p>
+                Gravité élevée : {verdict.nbElevee} · moyenne : {verdict.nbMoyenne} · faible :{' '}
+                {verdict.nbFaible}
+              </p>
+            )}
+            <p>
+              {verdict.nbDocuments} pièce{verdict.nbDocuments > 1 ? 's' : ''} analysée
+              {verdict.nbDocuments > 1 ? 's' : ''} par règles déterministes, le{' '}
+              {formatDate(verdict.calculeLe)}.
+            </p>
+            <p>
+              Le détail des écarts reste au citoyen, qui a pu les vérifier avant l’envoi : seul
+              l’état du dossier soumis est communiqué.
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CoherenceReportCard({ report, headingLevel = 'h2' }: CoherenceReportCardProps) {
   return (
     <Card>
       <CardHeader>
         <SectionHeader
           title="Contrôle de cohérence"
-          as="h2"
+          as={headingLevel}
           action={
             report && (
               <Badge tone={REPORT_OUTCOME_TONE[report.outcome]}>

@@ -9,9 +9,11 @@ written against it looks protected while being open.
 from __future__ import annotations
 
 MASKED_PLACEHOLDER = "• •• •• •• ••• ••• ••"
+#: Shown when the citizen has not declared a NIR yet (the column is nullable).
+UNDECLARED_PLACEHOLDER = "Non renseigné"
 
 
-def mask_social_security_number(nir: str) -> str:
+def mask_social_security_number(nir: str | None) -> str:
     """Mask a NIR to ``S YY MM •• ••• ••• ••``.
 
     Keeps the first three groups — sex, birth year, birth month — which an
@@ -27,6 +29,11 @@ def mask_social_security_number(nir: str) -> str:
     that in one function means a new endpoint cannot forget the rule, provided
     it maps through the schemas.
     """
+    # Undeclared is not unparseable: the agent must see that it is missing,
+    # not a mask suggesting a number exists.
+    if nir is None:
+        return UNDECLARED_PLACEHOLDER
+
     digits = "".join(char for char in nir if char.isdigit())
 
     if len(digits) < 5:

@@ -49,6 +49,8 @@ class ExtractionMethod(str, enum.Enum):
 
     native_pdf = "native_pdf"
     mistral_ocr = "mistral_ocr"
+    #: Tesseract/PaddleOCR on this server — the scan never left it.
+    local_ocr = "local_ocr"
 
 
 class DocumentCategory(str, enum.Enum):
@@ -138,6 +140,11 @@ class ApplicationDocument(TimestampMixin, Base):
     classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     classification_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     matched_checklist_item_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    #: Local analysis for inconsistency detection (`ai.inconsistency`):
+    #: `{"facts": DocumentFacts, "text": str}`. Server-side only — the API
+    #: exposes the facts through the inconsistency report, never the text.
+    local_analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class ChecklistItem(Base):

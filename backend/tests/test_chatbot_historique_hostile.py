@@ -14,7 +14,7 @@ sans compte.
 
 Deux lignes de défense, testées séparément parce qu'elles ne protègent pas la
 même chose : le schéma HTTP (la porte d'entrée) et le filtre du moteur (l'endroit
-où le prompt s'écrit, qu'un futur canal WhatsApp traversera aussi).
+où le prompt s'écrit, qu'un futur canal sans compte traversera aussi).
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def test_une_requete_dinjection_complete_est_rejetee():
 # --- Deuxième ligne : le filtre du moteur ------------------------------------
 #
 # Le schéma ne protège que la route HTTP. Ce moteur est prévu pour servir un second
-# canal sans compte (WhatsApp) qui ne passera pas par lui : la garantie doit tenir là
+# canal sans compte qui ne passera pas par lui : la garantie doit tenir là
 # où le prompt s'écrit.
 
 

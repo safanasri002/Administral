@@ -243,6 +243,10 @@ class Case(TimestampMixin, Base):
     #: ``assessment_generated`` / ``assessment_updated`` in the audit trail reflect
     #: real changes rather than every view. Null until first computed.
     assessment: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: Coherence of the documents *as submitted*, frozen at submission
+    #: (`ai.inconsistency.SubmissionVerdict`): status and counts only. The
+    #: citizen's own checks before sending are never stored here.
+    inconsistency_verdict: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     assessment_computed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -287,6 +291,16 @@ class CaseDocument(TimestampMixin, Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     #: Set once the extraction stage has read the file.
     extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    #: Where the uploaded bytes live, copied from the citizen document at
+    #: submission. This is what lets an instructing agent open the actual piece
+    #: rather than only its metadata — until it existed, the case carried the
+    #: file *name* but nothing that could resolve to the file.
+    #:
+    #: Nullable on purpose: cases created before this column, and seeded ones,
+    #: have no path. The agent endpoint answers 404 for those rather than
+    #: pretending the file is somewhere.
+    stored_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
     #: Agent C4 metadata forensics, computed by the pipeline before the agent
     #: sees the case (like the completeness and coherence reports). `fraud_analysis`

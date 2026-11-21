@@ -1,5 +1,11 @@
 import { lazy, Suspense } from 'react';
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  RouterProvider,
+  ScrollRestoration,
+} from 'react-router-dom';
 
 import { ProtectedRoute } from '@/app/router/ProtectedRoute';
 import { RequireApplProfile } from '@/app/router/RequireApplProfile';
@@ -12,7 +18,6 @@ import { FocusLayout } from '@/components/layout/FocusLayout';
 import { RouteFallback } from '@/app/router/RouteFallback';
 import { agentRoutes } from '@/features/agent';
 import { useSessionStore } from '@/store/sessionStore';
-import { useVoiceStore } from '@/features/voice/store/voiceStore';
 
 const LoginPage = lazy(() => import('@/features/auth/pages/LoginPage'));
 const RegisterPage = lazy(() => import('@/features/auth/pages/RegisterPage'));
@@ -45,7 +50,6 @@ const CvCoachPage = lazy(() => import('@/features/france-travail/pages/CvCoachPa
 const JobSearchPage = lazy(() => import('@/features/france-travail/pages/JobSearchPage'));
 
 const ChatPage = lazy(() => import('@/features/chatbot/pages/ChatPage'));
-const VoiceOnboardingPage = lazy(() => import('@/features/voice/pages/VoiceOnboardingPage').then(m => ({ default: m.VoiceOnboardingPage })));
 const PublicLandingPage = lazy(() => import('@/features/chatbot/pages/PublicLandingPage'));
 const NotFoundPage = lazy(() => import('@/features/portal/pages/NotFoundPage'));
 
@@ -56,23 +60,35 @@ const AdminDashboardPage = lazy(
 /**
  * `/` — public by default. A signed-in visitor is sent straight to the
  * administrations list (there is nothing for them at a marketing/assistant
- * landing they have already moved past); everyone else meets the assistant
- * first and "Se connecter" second, never the other way around.
+ * landing they have already moved past); everyone else sees the landing page
+ * immediately, with the voice-or-not choice offered as a popup on top of it
+ * (see `VoiceOnboardingDialog`) rather than a separate page blocking the way in.
  */
 function HomeRoute() {
   const user = useSessionStore((state) => state.user);
-  const hasSeenVoiceOnboarding = useVoiceStore((state) => state.hasSeenVoiceOnboarding);
-
-  if (!hasSeenVoiceOnboarding) {
-    return <Navigate to={ROUTES.voiceOnboarding} replace />;
-  }
 
   return user ? <Navigate to={ROUTES.administrations} replace /> : <PublicLandingPage />;
 }
 
-const router = createBrowserRouter([
+/**
+ * Racine de toutes les routes — n'existe que pour `ScrollRestoration`.
+ *
+ * Sans lui, une navigation côté client garde la position de défilement de la
+ * page qu'on quitte : partir du bas de l'accueil (« Voir tous les services »)
+ * ouvrait `/administrations` au ras du pied de page. `ScrollRestoration` remet
+ * en haut sur une navigation neuve et rend sa position à un retour arrière.
+ */
+function RootLayout() {
+  return (
+    <>
+      <ScrollRestoration />
+      <Outlet />
+    </>
+  );
+}
+
+const routes = [
   { path: ROUTES.home, element: <HomeRoute /> },
-  { path: ROUTES.voiceOnboarding, element: <VoiceOnboardingPage /> },
   {
     // Entry journey — no application chrome.
     element: <AuthLayout />,
@@ -111,7 +127,10 @@ const router = createBrowserRouter([
     // Administral redesign: `CitizenAppShell` (not `AppShell`) — see
     // src/index.css `.citizen-scope`. Kept off the agent back-office, which
     // still renders through `AppShell` below.
-    element: <CitizenAppShell variant="minimal" />,
+    // Coiffées de l'en-tête public tant qu'aucune session n'est ouverte : ces
+    // deux pages se parcourent sans compte et prolongent la page d'accueil.
+    // Une fois connecté, `CitizenAppShell` rend l'en-tête citoyen à leur place.
+    element: <CitizenAppShell variant="landing" />,
     children: [
       { path: ROUTES.administrations, element: <AdministrationsPage /> },
       { path: ROUTES.portal, element: <CitizenDashboardPage /> },
@@ -189,7 +208,9 @@ const router = createBrowserRouter([
     ],
   },
   { path: ROUTES.notFound, element: <NotFoundPage /> },
-]);
+];
+
+const router = createBrowserRouter([{ element: <RootLayout />, children: routes }]);
 
 export function AppRouter() {
   return (

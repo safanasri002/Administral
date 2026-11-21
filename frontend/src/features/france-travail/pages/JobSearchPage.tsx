@@ -1,5 +1,4 @@
 import {
-  ArrowRight,
   BriefcaseBusiness,
   ExternalLink,
   Info,
@@ -8,17 +7,20 @@ import {
   Search,
   SlidersHorizontal,
   Sparkles,
-  Target,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { CitizenCard } from '@/components/citizen/CitizenCard';
 import { CitizenEmptyState } from '@/components/citizen/CitizenEmptyState';
 import { citizenButton } from '@/components/citizen/citizenButton';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { FranceTravailShell } from '@/features/france-travail/components/FranceTravailShell';
+import {
+  FtCard,
+  FtReveal,
+  FtSectionHeading,
+} from '@/features/france-travail/components/FtVisuals';
 import { jobSearchService } from '@/services/jobSearchService';
 import type { JobOffer, JobSearchResult } from '@/types';
 
@@ -31,37 +33,55 @@ import type { JobOffer, JobSearchResult } from '@/types';
  * not the data itself: an offer with `score: null` is still a real offer,
  * just one the scoring step couldn't rate.
  *
- * Passée au design Administral : cartes `CitizenCard`, pastille de score et
- * barre colorée reprises de la maquette design-to-code. Le filtre par contrat
- * est purement client — il trie ce que le backend a déjà renvoyé et ne
- * relance aucune recherche.
+ * Les offres arrivent en fondu décalé plutôt que d'apparaître en bloc : sur
+ * une liste classée par pertinence, l'ordre d'entrée fait lire de haut en bas
+ * dans le bon sens. Le filtre par contrat est purement client — il trie ce
+ * que le backend a déjà renvoyé et ne relance aucune recherche.
  */
 
 const EXAMPLE_PROMPT =
   'Je suis ingénieur en IA générative et je veux trouver les jobs disponibles à Paris';
 
+/**
+ * Amorces cliquables — quatre phrases entières, pas des mots-clés : le champ
+ * attend une description, et un exemple qui ne s'écrit pas comme la réponse
+ * attendue apprend la mauvaise chose.
+ */
+const EXAMPLE_PROMPTS = [
+  EXAMPLE_PROMPT,
+  'Je cherche un poste de vendeur en CDI à Lyon',
+  'Aide-soignante, temps partiel, autour de Nantes',
+  'Développeur web junior, télétravail possible',
+];
+
 /** Vert au-dessus de 66 %, bleu de marque au-dessus de 33 %, ambre en dessous. */
 function scoreTone(score: number) {
-  if (score >= 66) return { chip: 'bg-success-surface text-success', bar: 'bg-success' };
-  if (score >= 33) return { chip: 'bg-brand-soft text-brand', bar: 'bg-brand' };
-  return { chip: 'bg-warning-surface text-warning', bar: 'bg-warning' };
+  if (score >= 66)
+    return { chip: 'bg-success-surface text-success', bar: 'bg-success', accent: 'success' } as const;
+  if (score >= 33)
+    return { chip: 'bg-brand-soft text-brand', bar: 'bg-brand', accent: 'brand' } as const;
+  return {
+    chip: 'bg-warning-surface text-warning-foreground',
+    bar: 'bg-warning',
+    accent: 'warning',
+  } as const;
 }
 
 function OfferCard({ offer }: { offer: JobOffer }) {
   const tone = offer.score !== null ? scoreTone(offer.score) : null;
 
   return (
-    <CitizenCard interactive className="flex h-full flex-col p-6">
+    <FtCard interactive accent={tone?.accent} className="flex h-full flex-col p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="font-display text-lg font-bold leading-snug text-ink">{offer.intitule}</h3>
+          <h3 className="font-display text-headline-md text-ink">{offer.intitule}</h3>
           {offer.entreprise && (
-            <p className="mt-1 text-xs font-semibold text-muted-foreground">{offer.entreprise}</p>
+            <p className="mt-1 text-label-sm text-muted-foreground">{offer.entreprise}</p>
           )}
         </div>
         {tone && (
           <span
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold tabular-nums ${tone.chip}`}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-label-sm tabular-nums ${tone.chip}`}
           >
             {offer.score} %
           </span>
@@ -69,23 +89,23 @@ function OfferCard({ offer }: { offer: JobOffer }) {
       </div>
 
       {tone && (
-        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+        <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-surface-container">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${tone.bar}`}
+            className={`h-full rounded-full transition-[width] duration-200 ease-out ${tone.bar}`}
             style={{ width: `${offer.score}%` }}
           />
         </div>
       )}
 
-      <dl className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
+      <dl className="mt-5 flex flex-wrap gap-2 text-label-sm">
         {offer.lieuLibelle && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-muted-foreground">
             <MapPin className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
             <dd>{offer.lieuLibelle}</dd>
           </div>
         )}
         {offer.typeContrat && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-muted-foreground">
             <BriefcaseBusiness className="size-3.5 shrink-0 text-brand" aria-hidden="true" />
             <dd>{offer.typeContrat}</dd>
           </div>
@@ -93,30 +113,30 @@ function OfferCard({ offer }: { offer: JobOffer }) {
       </dl>
 
       {offer.raison && (
-        <p className="mt-5 flex items-start gap-3 rounded-xl border border-brand/15 bg-brand-soft/50 p-4 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-5 flex items-start gap-3 rounded-lg border-l-2 border-brand bg-brand-soft p-4 text-body-sm text-muted-foreground">
           <Sparkles className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden="true" />
           {offer.raison}
         </p>
       )}
 
-      <p className="mt-5 flex-1 text-xs leading-relaxed text-muted-foreground">
+      <p className="mt-5 flex-1 text-body-sm text-muted-foreground">
         {offer.description}
       </p>
 
       {offer.url && (
-        <div className="mt-6 border-t border-border/60 pt-4">
+        <div className="mt-6 border-t border-border pt-4">
           <a
             href={offer.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-brand transition-all hover:gap-3"
+            className="inline-flex items-center gap-2 text-label-md text-brand transition-all hover:gap-3"
           >
             Voir l&rsquo;offre sur France Travail
             <ExternalLink className="size-4" aria-hidden="true" />
           </a>
         </div>
       )}
-    </CitizenCard>
+    </FtCard>
   );
 }
 
@@ -161,63 +181,75 @@ export default function JobSearchPage() {
   }, [result, contract]);
 
   return (
-    <FranceTravailShell
-      eyebrow="Recherche d'offres"
-      title="Les offres qui correspondent vraiment à votre profil."
-      description="Décrivez ce que vous cherchez en une phrase — métier, ville, tout autre détail — et retrouvez de vraies offres France Travail actuellement ouvertes, classées par pertinence."
-      aside={
-        <div className="relative overflow-hidden rounded-2xl border border-brand/20 bg-card/75 p-8 text-center shadow-lg backdrop-blur">
-          <div className="pointer-events-none absolute -right-12 -top-12 size-36 rounded-full bg-chart-2/5 blur-3xl" />
-          <div className="relative">
-            <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-chart-2 text-white shadow-md ring-8 ring-chart-2/10">
-              <Target className="size-8" aria-hidden="true" />
-            </span>
-            <p className="mt-6 font-display text-5xl font-extrabold tabular-nums text-chart-2">
-              {result?.available ? result.offres.length : '—'}
-            </p>
-            <p className="mt-3 text-sm font-semibold leading-snug text-muted-foreground">
-              {result?.available
-                ? 'Offres réellement ouvertes aujourd’hui'
-                : 'Lancez une recherche pour voir vos offres'}
-            </p>
-            {result?.motsCles && (
-              <p className="mt-4 inline-flex rounded-full bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand">
-                {result.motsCles}
-                {result.departement ? ` · ${result.departement}` : ''}
-              </p>
-            )}
-          </div>
-        </div>
-      }
-    >
+    <div className="mx-auto max-w-container pb-24">
+      {/* En-tête sur fond clair, même grammaire que « Analyser une offre » et
+          « Coach CV » : une pastille, un titre, un sous-titre. */}
+      <div className="mb-8">
+        <span className="inline-flex items-center gap-2 rounded-full bg-[#f6fbff] px-3 py-1.5 text-label-sm font-semibold uppercase tracking-wide text-[#3158b0]">
+          <Search className="size-3.5" aria-hidden="true" />
+          Recherche d’offres
+        </span>
+        <h1 className="mt-4 font-display text-headline-lg-mobile font-bold leading-tight text-[#102a74] sm:text-4xl">
+          Les offres qui correspondent vraiment à votre profil
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+          Décrivez ce que vous cherchez en une phrase — métier, ville, tout autre détail — et
+          retrouvez de vraies offres France Travail, classées par pertinence.
+        </p>
+      </div>
+
       <div className="space-y-gutter">
         <CitizenCard className="p-6">
-          <p className="eyebrow">Votre recherche</p>
-          <h2 className="mt-3 font-display text-xl font-extrabold leading-tight text-ink">
-            Décrivez ce que vous cherchez
+          <h2 className="flex items-center gap-3 font-sans text-headline-md font-bold text-[#373848]">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#f6fbff] text-[#3158b0]">
+              <Search className="size-4" aria-hidden="true" />
+            </span>
+            Décrivez ce que vous cherchez, comme à un conseiller
           </h2>
 
-          <div className="mt-6 space-y-3">
-            <Label htmlFor="job-search-prompt">En une phrase, comme à un conseiller</Label>
-            <Textarea
-              id="job-search-prompt"
-              rows={4}
-              placeholder={EXAMPLE_PROMPT}
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              disabled={isSearching}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  void search();
-                }
-              }}
-            />
+          <Textarea
+            id="job-search-prompt"
+            aria-label="Décrivez ce que vous cherchez"
+            rows={4}
+            placeholder={EXAMPLE_PROMPT}
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            disabled={isSearching}
+            className="mt-5 resize-none"
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault();
+                void search();
+              }
+            }}
+          />
+
+          {/* Exemples : des boutons de même hauteur dans une rangée qui se
+              replie, jamais un lien texte au milieu de boutons. */}
+          <ul className="mt-4 flex flex-wrap gap-2">
+            {EXAMPLE_PROMPTS.map((example) => (
+              <li key={example}>
+                <button
+                  type="button"
+                  onClick={() => setPrompt(example)}
+                  disabled={isSearching}
+                  className="inline-flex h-9 items-center rounded-full bg-[#f6fbff] px-4 text-label-sm text-[#3158b0] transition-colors hover:bg-[#e6f0fb] disabled:opacity-50"
+                >
+                  {example}
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-6 flex justify-center">
             <button
               type="button"
               onClick={() => void search()}
               disabled={!prompt.trim() || isSearching}
-              className={citizenButton({ variant: 'marianne' })}
+              className={cn(
+                citizenButton(),
+                'bg-[#102c6d] px-8 text-white hover:opacity-90',
+              )}
             >
               {isSearching ? (
                 <Loader2 className="animate-spin" aria-hidden="true" />
@@ -227,31 +259,17 @@ export default function JobSearchPage() {
               {isSearching ? 'Recherche en cours…' : 'Rechercher'}
             </button>
           </div>
-
-          {contracts.length > 1 && (
-            <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-border/60 pt-5">
-              <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand">
-                <SlidersHorizontal className="size-3.5" aria-hidden="true" />
-                Contrat
-              </span>
-              {contracts.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setContract(item)}
-                  aria-pressed={item === contract}
-                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors ${
-                    item === contract
-                      ? 'bg-brand text-white'
-                      : 'bg-brand-soft text-brand hover:bg-brand/15'
-                  }`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          )}
         </CitizenCard>
+
+        {/* L'emplacement des résultats, annoncé tant qu'il est vide : les offres
+            s'affichent ici même, il n'y a pas d'autre page à atteindre. */}
+        {!result && !error && !isSearching && (
+          <p className="flex items-start gap-3 rounded-2xl bg-[#f6fbff] p-5 text-body-sm text-muted-foreground">
+            <Info className="mt-0.5 size-4 shrink-0 text-[#3158b0]" aria-hidden="true" />
+            Aucune recherche lancée pour le moment — vos offres correspondantes apparaîtront ici,
+            classées par pertinence.
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="text-body-sm text-destructive">
@@ -281,28 +299,56 @@ export default function JobSearchPage() {
         )}
 
         {result?.available && visible.length > 0 && (
-          <div>
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <div>
-                <p className="eyebrow">Résultats classés par pertinence</p>
-                <h2 className="mt-3 font-display text-2xl font-extrabold leading-tight text-ink">
-                  {visible.length} offre{visible.length > 1 ? 's' : ''} pour votre profil
-                </h2>
-              </div>
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                Source : API Offres d’emploi France Travail
-                <ArrowRight className="size-3.5" aria-hidden="true" />
-              </p>
-            </div>
+          <div className="space-y-8">
+            <FtSectionHeading
+              eyebrow="Classées par pertinence"
+              title={`${visible.length} offre${visible.length > 1 ? 's' : ''} pour votre profil`}
+              icon={BriefcaseBusiness}
+              action={
+                <p className="text-body-sm text-muted-foreground">
+                  Source : API Offres d’emploi France Travail
+                </p>
+              }
+            />
 
-            <div className="mt-8 grid gap-6 lg:grid-cols-2">
-              {visible.map((offer) => (
-                <OfferCard key={offer.id} offer={offer} />
+            {/* Filtre par contrat : il vit avec les résultats qu'il trie, plus
+                dans la carte de recherche — il n'y avait rien à filtrer avant
+                d'avoir cherché. Purement client, aucune requête relancée. */}
+            {contracts.length > 1 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="mr-1 inline-flex items-center gap-1.5 text-label-sm uppercase tracking-wide text-[#3158b0]">
+                  <SlidersHorizontal className="size-3.5" aria-hidden="true" />
+                  Contrat
+                </span>
+                {contracts.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => setContract(item)}
+                    aria-pressed={item === contract}
+                    className={cn(
+                      'inline-flex h-9 items-center rounded-full px-4 text-label-sm transition-colors duration-200',
+                      item === contract
+                        ? 'bg-[#102c6d] text-white'
+                        : 'bg-[#f6fbff] text-[#3158b0] hover:bg-[#e6f0fb]',
+                    )}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              {visible.map((offer, index) => (
+                <FtReveal key={offer.id} index={index} className="h-full">
+                  <OfferCard offer={offer} />
+                </FtReveal>
               ))}
             </div>
           </div>
         )}
       </div>
-    </FranceTravailShell>
+    </div>
   );
 }

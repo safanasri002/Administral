@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import { useEffect } from 'react';
 
+import { ROUTES } from '@/app/router/paths';
 import { CitizenNotificationList } from '@/components/citizen/CitizenNotificationList';
 import { CitizenPageHeader } from '@/components/citizen/CitizenPageHeader';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -31,6 +32,7 @@ export default function NotificationsPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <CitizenPageHeader
+        backTo={ROUTES.portal}
         eyebrow="Suivi en temps réel"
         title="Centre de notifications"
         description="Le suivi de vos démarches, dès qu’il y a du nouveau."
@@ -39,7 +41,7 @@ export default function NotificationsPage() {
             type="button"
             onClick={() => void markAllRead()}
             disabled={unreadCount === 0}
-            className="inline-flex items-center gap-2 rounded-md border border-brand/40 bg-background px-5 py-2.5 text-sm font-semibold text-ink transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background"
+            className="inline-flex items-center gap-2 rounded-md border border-brand/40 bg-background px-5 py-2.5 text-label-md text-ink transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-background"
           >
             Tout marquer comme lu
           </button>

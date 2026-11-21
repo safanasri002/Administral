@@ -112,9 +112,15 @@ def register_citizen(db: Session, data: RegisterRequest) -> TokenResponse:
             email=data.email,
             password_hash=hash_password(data.password),
             role=Role.CITIZEN,
+            # TEMPORAIRE : compte créé déjà vérifié, authentification simple
+            # (email+mot de passe) sans confirmation par e-mail. Pour revenir
+            # au flux normal, retirer ces deux lignes et décommenter l'appel
+            # à _send_verification_email ci-dessous.
+            is_verified=True,
+            verified_at=datetime.now(UTC),
         ),
     )
-    _send_verification_email(db, user)
+    # _send_verification_email(db, user)  # TEMPORAIREMENT DÉSACTIVÉ
     return _issue(user)
 
 
@@ -171,11 +177,13 @@ def login(db: Session, data: LoginRequest) -> TokenResponse:
     if user is None or not verify_password(data.password, user.password_hash):
         raise InvalidCredentialsError("Identifiants incorrects. Veuillez réessayer.")
 
-    if not user.is_verified and user.role != Role.ADMIN:
-        raise EmailNotVerifiedError(
-            "Votre adresse e-mail n'a pas encore été confirmée. "
-            "Vérifiez votre messagerie ou demandez un nouveau lien."
-        )
+    # TEMPORAIREMENT DÉSACTIVÉ : la connexion n'exige plus l'email vérifié.
+    # Pour réactiver, décommenter le bloc ci-dessous.
+    # if not user.is_verified and user.role != Role.ADMIN:
+    #     raise EmailNotVerifiedError(
+    #         "Votre adresse e-mail n'a pas encore été confirmée. "
+    #         "Vérifiez votre messagerie ou demandez un nouveau lien."
+    #     )
 
     return _issue(user)
 

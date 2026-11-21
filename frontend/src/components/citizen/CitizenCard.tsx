@@ -20,9 +20,9 @@ export function CitizenCard({ children, interactive = false, className }: Citize
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm',
+        'overflow-hidden rounded-2xl border border-border/60 bg-card shadow-soft',
         interactive &&
-          'transition-all duration-300 hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-lg',
+          'transition-all duration-200 ease-standard hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-soft-hover',
         className,
       )}
     >
@@ -52,7 +52,15 @@ export function CitizenCardHeader({ title, icon: Icon, action, className }: Citi
             <Icon className="size-4" aria-hidden="true" />
           </span>
         )}
-        <h2 className="truncate font-display text-base font-bold text-ink">{title}</h2>
+        {/* Aligné sur le <h1> des pages (« Déposer un dossier ») : même police
+            sans, même graisse 700, même bleu #102a74. Auparavant `font-display`
+            + `text-ink` (#06122E), ce qui donnait une police et une couleur
+            différentes du titre de la page juste au-dessus. La taille reste
+            `text-headline-md` — c'est un titre de carte, pas un titre de page.
+
+            Littéral plutôt que le jeton `--admtl-action` : aucune classe
+            `text-action` n'est déclarée dans la config Tailwind. */}
+        <h2 className="truncate font-sans text-headline-md font-bold text-[#102a74]">{title}</h2>
       </span>
       {action}
     </div>

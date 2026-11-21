@@ -11,41 +11,59 @@ export type CafServiceId = 'apl' | 'af' | 'alf' | 'prime-activite';
 export interface CafServiceDefinition {
   id: CafServiceId;
   name: string;
+  /**
+   * What the abbreviated `name` stands for, e.g. « Aide Personnalisée au
+   * Logement » for APL — most citizens meet these benefits as acronyms only.
+   */
+  fullName?: string;
   description: string;
   /** Route this service owns. Empty for a not-yet-available one — nothing to link to. */
   basePath: string;
   status: 'available' | 'coming_soon';
+  /** Artwork filling the card's panel on `/portal` (`public/caf-services/`). */
+  photoUrl?: string;
 }
 
 export const CAF_SERVICES: CafServiceDefinition[] = [
   {
     id: 'apl',
-    name: 'APL à l’Aide',
+    name: 'Aide aux APL',
+    fullName: 'APL — Aide Personnalisée au Logement',
     description:
-      'Gestion simplifiée de vos aides au logement et simulations de droits en temps réel.',
+      'Aide au paiement du loyer, versée sous conditions de ressources pour un logement conventionné. Ici : simulez vos droits et déposez votre dossier.',
     basePath: ROUTES.dossier,
     status: 'available',
+    photoUrl: '/guy2.png',
   },
   {
     id: 'af',
     name: 'Allocations Familiales',
-    description: 'Suivi de vos allocations familiales et de leurs conditions de versement.',
+    fullName: 'AF — Allocations Familiales',
+    description:
+      'Versement mensuel aux familles ayant au moins deux enfants à charge, sans condition d’activité.',
     basePath: '',
     status: 'coming_soon',
+    photoUrl: '/AF.png',
   },
   {
     id: 'alf',
     name: 'ALF',
-    description: 'Allocation de logement familiale pour les foyers non éligibles à l’APL.',
+    fullName: 'ALF — Allocation de Logement Familiale',
+    description:
+      'Aide au logement pour les foyers avec personnes à charge qui ne peuvent pas prétendre à l’APL.',
     basePath: '',
     status: 'coming_soon',
+    photoUrl: '/ALF.png',
   },
   {
     id: 'prime-activite',
     name: 'Prime d’activité',
-    description: 'Estimation et suivi de votre prime d’activité en fonction de vos revenus.',
+    fullName: 'Complément de revenu pour les actifs modestes',
+    description:
+      'Complète les revenus des personnes qui travaillent tout en gagnant peu. Ici : estimez et suivez votre montant.',
     basePath: '',
     status: 'coming_soon',
+    photoUrl: '/PA.png',
   },
 ];
 

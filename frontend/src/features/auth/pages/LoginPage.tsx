@@ -1,10 +1,12 @@
-import { Eye, EyeOff, Loader2, Lock, Mail, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Lock, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { APP_CONFIG } from '@/app/config/app';
 import { ROUTES } from '@/app/router/paths';
+import { AUTH_CHECKBOX, AUTH_FIELD } from '@/features/auth/authStyles';
 import { FranceConnectButton } from '@/features/auth/components/FranceConnectButton';
+import { PartnerLogos } from '@/components/layout/PartnerLogos';
 import Turnstile from '@/components/shared/Turnstile';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -14,14 +16,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { authService } from '@/services/authService';
-import { useSessionStore } from '@/store/sessionStore';
-import { useVoiceStore } from '@/features/voice/store/voiceStore';
+import { useSessionStore, type SessionRole } from '@/store/sessionStore';
 import { useVoicePage } from '@/features/voice/context/VoicePageContext';
 
 interface LocationState {
   from?: { pathname: string };
   notice?: string;
 }
+
+const OTP_LENGTH = 6;
+// Double authentification désactivée pour le moment : l'étape n'est branchée
+// sur aucun backend (tout code à 6 chiffres passe). Repasser à `true` pour la
+// réafficher.
+const TWO_STEP_VERIFICATION_ENABLED = false;
 
 export default function LoginPage() {
   useDocumentTitle('Connexion');
@@ -39,32 +46,62 @@ export default function LoginPage() {
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
 
+  // ---------------------------------------------------------------------
+  // Double authentification — TEMPORAIREMENT STATIQUE.
+  //
+  // Le mot de passe est déjà vérifié par `login()` (le compte est
+  // authentifié) quand cette étape s'affiche ; elle n'est encore branchée
+  // sur rien côté backend. N'importe quel code de 6 chiffres est accepté —
+  // c'est un habillage visuel en attendant l'envoi et la vérification
+  // réels d'un code.
+  // ---------------------------------------------------------------------
+  const [otpStep, setOtpStep] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [pendingRole, setPendingRole] = useState<SessionRole | null>(null);
+
   const navigate = useNavigate();
   const location = useLocation();
   const notice = (location.state as LocationState | null)?.notice;
+
+  const goToDestination = (role: SessionRole) => {
+    if (role === 'admin') {
+      navigate(ROUTES.admin, { replace: true });
+    } else if (role === 'agent') {
+      navigate(ROUTES.agent, { replace: true });
+    } else {
+      // Straight to where they were headed, or the administrations list by
+      // default — same destination `HomeRoute` sends an already-authenticated
+      // visitor to, so "choose an administration, then see its services" is the
+      // one consistent entry point rather than a shortcut straight to CAF's hub.
+      // The voice choice is offered by `VoiceOnboardingDialog` on the landing
+      // page; it no longer stands between a citizen and their dossier.
+      const from = (location.state as LocationState | null)?.from?.pathname || ROUTES.administrations;
+      navigate(from, { replace: true });
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setResent(false);
     try {
       const role = await login({ email, password, turnstileToken: turnstileToken ?? undefined });
-      if (role === 'admin') {
-        navigate(ROUTES.admin, { replace: true });
-      } else if (role === 'agent') {
-        navigate(ROUTES.agent, { replace: true });
-      } else {
-        // After login, take citizens to voice onboarding if they haven't seen it yet,
-        // otherwise to the page they were headed to, or the administrations list by
-        // default — same destination `HomeRoute` sends an already-authenticated
-        // visitor to, so "choose an administration, then see its services" is the
-        // one consistent entry point rather than a shortcut straight to CAF's hub.
-        const hasSeenVoiceOnboarding = useVoiceStore.getState().hasSeenVoiceOnboarding;
-        const from = (location.state as LocationState | null)?.from?.pathname || ROUTES.administrations;
-        navigate(hasSeenVoiceOnboarding ? from : ROUTES.voiceOnboarding, { replace: true });
+      // Le compte est déjà authentifié ici — l'étape de code ne fait que
+      // s'afficher avant la redirection, voir la note plus haut.
+      if (!TWO_STEP_VERIFICATION_ENABLED) {
+        goToDestination(role);
+        return;
       }
+      setPendingRole(role);
+      setOtpStep(true);
     } catch {
       // error is in the store
     }
+  };
+
+  const handleOtpSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!pendingRole) return;
+    goToDestination(pendingRole);
   };
 
   const handleResend = async () => {
@@ -114,30 +151,82 @@ export default function LoginPage() {
     },
   });
 
-  return (
-    <Card className="rounded-xl border-outline-variant shadow-soft transition-all hover:shadow-soft-hover">
-      <CardContent className="p-6 sm:p-8">
-        <div className="mb-8 text-center">
-          <h1 className="text-headline-lg-mobile text-primary md:text-headline-lg">Bienvenue</h1>
-          <p className="mt-1 text-body-md text-on-surface-variant">
-            Connectez-vous à votre portail citoyen intelligent
-          </p>
-        </div>
+  if (otpStep) {
+    return (
+      <Card className="rounded-2xl border-none bg-surface-lowest shadow-soft-hover">
+        <CardContent className="p-8 pb-6 sm:p-10 sm:pb-7 short:p-6 short:pb-5 short:sm:p-7 shorter:p-4 shorter:pb-3 shorter:sm:p-5">
+          <div className="mb-8 flex flex-col items-center text-center short:mb-5 shorter:mb-3">
+            <span className="mb-4 flex size-24 items-center justify-center rounded-2xl bg-surface-lowest shadow-soft ring-1 ring-primary-fixed short:mb-3 short:size-16 shorter:size-12 shorter:mb-1.5">
+              <ShieldCheck className="size-10 text-primary" aria-hidden="true" />
+            </span>
+            <h1 className="text-headline-lg text-primary">Vérification en deux étapes</h1>
+            <p className="mt-2 text-body-sm text-on-surface-variant">
+              Entrez le code de sécurité à 6 chiffres envoyé à <strong>{email}</strong>.
+            </p>
+          </div>
 
-        <FranceConnectButton />
-        <p className="mt-3 text-center">
-          <Link
-            to="/franceconnect"
-            className="text-body-sm text-on-surface-variant hover:underline"
+          <form
+            className="flex flex-col gap-4 short:gap-3 shorter:gap-2"
+            onSubmit={handleOtpSubmit}
+            noValidate
           >
-            Qu'est-ce que FranceConnect ?
-          </Link>
-        </p>
+            <Input
+              id="otp"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              aria-label="Code de vérification"
+              placeholder="000000"
+              maxLength={OTP_LENGTH}
+              value={otpCode}
+              onChange={(event) =>
+                setOtpCode(event.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))
+              }
+              required
+              className={`${AUTH_FIELD} text-center tracking-[0.5em]`}
+            />
 
-        <div className="my-8 flex items-center gap-4">
-          <span aria-hidden="true" className="h-px flex-1 bg-outline-variant" />
-          <span className="text-label-sm uppercase tracking-widest text-outline">ou</span>
-          <span aria-hidden="true" className="h-px flex-1 bg-outline-variant" />
+            <Button
+              type="submit"
+              block
+              size="lg"
+              disabled={otpCode.length !== OTP_LENGTH}
+              className="mt-1 h-12 short:h-11 shorter:h-10 rounded-2xl bg-marianne text-body-lg short:text-body-md font-semibold hover:bg-primary"
+            >
+              Vérifier
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setOtpStep(false);
+                setOtpCode('');
+              }}
+              className="text-center text-body-sm text-on-surface-variant hover:underline"
+            >
+              Revenir à la connexion
+            </button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    // The `short:` variants (max-height: 820px, see tailwind.config) trim
+    // whitespace only, so the whole card still fits a laptop viewport without
+    // a scrollbar. Nothing is hidden or shrunk below its readable size.
+    <Card className="rounded-2xl border-none bg-surface-lowest shadow-soft-hover">
+      <CardContent className="p-8 pb-6 sm:p-10 sm:pb-7 short:p-6 short:pb-5 short:sm:p-7 shorter:p-4 shorter:pb-3 shorter:sm:p-5">
+        <div className="mb-8 flex flex-col items-center text-center short:mb-5 shorter:mb-3">
+          <span className="mb-4 flex size-24 items-center justify-center rounded-2xl bg-surface-lowest shadow-soft ring-1 ring-primary-fixed short:mb-3 short:size-16 shorter:size-12 shorter:mb-1.5">
+            <img
+              src="/logo.png"
+              alt={APP_CONFIG.name}
+              className="size-full rounded-2xl object-contain"
+            />
+          </span>
+          <h1 className="text-headline-lg text-primary">Connexion</h1>
         </div>
 
         {notice && (
@@ -163,7 +252,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleResend}
                   disabled={resending}
-                  className="mt-2 flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                  className="mt-2 flex items-center gap-1.5 text-label-md text-primary hover:underline"
                 >
                   {resending ? (
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -181,42 +270,43 @@ export default function LoginPage() {
           </Alert>
         ) : null}
 
-        <form ref={formRef} className="flex flex-col gap-5" onSubmit={handleSubmit} noValidate>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Adresse e-mail</Label>
-            <Input
-              id="email"
-              type="email"
-              name="email"
-              autoComplete="email"
-              placeholder="nom@exemple.fr"
-              startIcon={<Mail />}
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </div>
+        <form
+          ref={formRef}
+          className="flex flex-col gap-4 short:gap-3 shorter:gap-2"
+          onSubmit={handleSubmit}
+          noValidate
+        >
+          {/* Placeholder-only fields, per the reference design. The visible
+              `<Label>` is gone, so each field carries an `aria-label` — a
+              placeholder alone is not an accessible name, and it disappears
+              as soon as the citizen starts typing. */}
+          <Input
+            id="email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            aria-label="Adresse e-mail"
+            placeholder="Adresse e-mail"
+            startIcon={<Mail />}
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            className={AUTH_FIELD}
+          />
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between">
-              <Label htmlFor="password">Mot de passe</Label>
-              <Link
-                to={ROUTES.forgotPassword}
-                className="text-body-sm text-ai hover:underline"
-              >
-                Oublié ?
-              </Link>
-            </div>
-            <Input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              autoComplete="current-password"
-              startIcon={<Lock />}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-              endAdornment={
+          <Input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            name="password"
+            autoComplete="current-password"
+            aria-label="Mot de passe"
+            placeholder="Mot de passe"
+            startIcon={<Lock />}
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+            className={AUTH_FIELD}
+            endAdornment={
                 <button
                   type="button"
                   onClick={() => setShowPassword((value) => !value)}
@@ -232,16 +322,29 @@ export default function LoginPage() {
                   )}
                 </button>
               }
-            />
+          />
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Checkbox id="remember" className={AUTH_CHECKBOX} />
+              <Label htmlFor="remember" className="cursor-pointer text-body-sm font-normal">
+                Se souvenir de moi
+              </Label>
+            </div>
+            {/* `text-destructive` (--error, #ba1a1a) rather than a literal red:
+                it rides the high-contrast preference, and clears AA at 6.5:1
+                where the previous pink sat at 3.6:1. */}
+            <Link
+              to={ROUTES.forgotPassword}
+              className="text-body-sm text-destructive hover:underline"
+            >
+              Oublié ?
+            </Link>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Checkbox id="remember" />
-            <Label htmlFor="remember" className="cursor-pointer font-normal">
-              Se souvenir de moi
-            </Label>
-          </div>
-
+          {/* Renders nothing without `VITE_TURNSTILE_SITE_KEY` — which is why
+              it is absent from the reference screenshot. It still gates the
+              submit button in any environment that configures a site key. */}
           <Turnstile
             onVerify={(token) => setTurnstileToken(token)}
             onExpire={() => setTurnstileToken(null)}
@@ -252,19 +355,54 @@ export default function LoginPage() {
             block
             size="lg"
             disabled={isLoggingIn || !turnstileToken}
-            className="bg-ai"
+            className="mt-1 h-12 short:h-11 shorter:h-10 rounded-2xl bg-marianne text-body-lg short:text-body-md font-semibold hover:bg-primary"
           >
             {isLoggingIn ? 'Connexion…' : 'Se connecter'}
           </Button>
         </form>
 
-        <div className="mt-8 text-center">
-          <p className="text-body-md text-on-surface-variant">
-            Nouveau sur {APP_CONFIG.name} ?{' '}
-            <Link to={ROUTES.register} className="font-bold text-ai hover:underline">
-              Créer un compte
+        <div className="my-6 flex items-center gap-4 short:my-4 shorter:my-2">
+          <span aria-hidden="true" className="h-px flex-1 bg-primary-fixed" />
+          <span className="text-label-sm text-on-surface-variant">Ou connectez-vous avec</span>
+          <span aria-hidden="true" className="h-px flex-1 bg-primary-fixed" />
+        </div>
+
+        <FranceConnectButton variant="muted" className="h-12 short:h-11 shorter:h-10 py-1.5 rounded-xl" />
+        {/* 26px demandés de part et d'autre de ces deux lignes — valeur exacte,
+            hors échelle Tailwind, d'où la notation entre crochets. */}
+        <p className="mt-[26px] short:mt-4 shorter:mt-2 text-center">
+          <Link to="/franceconnect" className="text-body-sm text-on-surface-variant hover:underline">
+            Qu’est-ce que FranceConnect ?
+          </Link>
+        </p>
+
+        <div className="mt-[26px] short:mt-4 shorter:mt-2 text-center opacity-70">
+          <p className="text-label-sm text-on-surface-variant">
+            Vous n’avez pas de compte ?{' '}
+            <Link to={ROUTES.register} className="text-ai hover:underline">
+              Créer un espace personnel
             </Link>
           </p>
+        </div>
+
+        {/* `PartnerLogos` rather than two hand-written image tags: it already
+            pairs Talan with Mistral and falls back to a text wordmark if an
+            asset is missing. `wordmark` selects /mistral-logo.svg. */}
+        <div className="mt-[26px] short:mt-4 shorter:mt-2 flex items-center justify-center gap-3 opacity-70">
+          <span className="text-label-sm leading-none text-on-surface-variant">Propulsé par</span>
+          {/* Même hauteur de boîte pour les deux marques (20px).
+              Le décalage de 3px : le PNG Talan porte sa signature « Positive
+              innovation » sous le mot-symbole, qui n'occupe donc que le haut du
+              fichier — son centre optique remonte d'environ 15% de la hauteur
+              de boîte, soit 3px ici. Sans ce rattrapage, « TALAN » flotte
+              au-dessus de la marque Mistral alors que les boîtes, elles, sont
+              bien centrées. */}
+          <PartnerLogos
+            className="items-center gap-4"
+            logoClassName="h-5 w-auto object-contain"
+            talanClassName="translate-y-[3px]"
+            mistralMark="wordmark"
+          />
         </div>
       </CardContent>
     </Card>

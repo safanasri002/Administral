@@ -1,4 +1,6 @@
-import { ArrowRight, BookOpen, Bot, FileUp, ThumbsDown, ThumbsUp, User } from 'lucide-react';
+import { ArrowRight, BookOpen, FileUp, Paperclip, ThumbsDown, ThumbsUp, User } from 'lucide-react';
+
+import { AssistantMascot } from '@/features/chatbot/components/AssistantMascot';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -42,33 +44,54 @@ export function MessageBubble({
 
   return (
     <li id={`chat-message-${message.id}`} className={cn('flex gap-3', isUser && 'flex-row-reverse')}>
-      <span
-        aria-hidden="true"
-        className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-lg',
-          isUser
-            ? 'bg-surface-container text-on-surface-variant'
-            : 'bg-primary text-primary-foreground',
-        )}
-      >
-        {isUser ? <User className="size-5" /> : <Bot className="size-5" />}
-      </span>
+      {isUser ? (
+        <span
+          aria-hidden="true"
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-container text-on-surface-variant"
+        >
+          <User className="size-5" />
+        </span>
+      ) : (
+        <AssistantMascot />
+      )}
 
       <div className={cn('flex max-w-[80%] flex-col gap-3', isUser && 'items-end')}>
-        <div
-          className={cn(
-            // `whitespace-pre-line` : certaines réponses sont des listes (la
-            // checklist de documents, une pièce par ligne). Sans ça, tout se
-            // recolle en un pavé.
-            'whitespace-pre-line rounded-xl px-4 py-3 text-body-md',
-            isUser
-              ? 'bg-primary text-primary-foreground'
-              : 'border border-border bg-surface-low text-on-surface',
-          )}
-        >
-          <span className="sr-only">{isUser ? 'Vous : ' : 'Assistant : '}</span>
-          {message.content}
-        </div>
+        {/* Pièce jointe : une carte dans le fil, au même titre qu'un message
+            écrit. Le fichier lui-même n'est pas conservé, seuls son nom et sa
+            taille — c'est tout ce que la vue a à montrer. */}
+        {message.attachment && (
+          <div className="flex max-w-full items-center gap-3 rounded-xl border border-border bg-surface-low p-3">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Paperclip className="size-4" aria-hidden="true" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-label-md text-on-surface">
+                {message.attachment.name}
+              </span>
+              <span className="block text-body-sm text-on-surface-variant">
+                {(message.attachment.size / 1024).toFixed(0)} Ko
+              </span>
+            </span>
+          </div>
+        )}
+
+        {/* Un tour qui ne porte qu'une pièce jointe n'a pas de bulle vide. */}
+        {message.content && (
+          <div
+            className={cn(
+              // `whitespace-pre-line` : certaines réponses sont des listes (la
+              // checklist de documents, une pièce par ligne). Sans ça, tout se
+              // recolle en un pavé.
+              'whitespace-pre-line rounded-xl px-4 py-3 text-body-md',
+              isUser
+                ? 'bg-primary text-primary-foreground'
+                : 'border border-border bg-surface-low text-on-surface',
+            )}
+          >
+            <span className="sr-only">{isUser ? 'Vous : ' : 'Assistant : '}</span>
+            {message.content}
+          </div>
+        )}
 
         {message.sources && <SourceCitation sources={message.sources} />}
 

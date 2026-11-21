@@ -55,7 +55,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
 
     # -- Cloudflare Turnstile (anti-bot) -----------------------------------
-    # Optional: when unset, captcha verification is skipped (local dev).
+    # Both keys come from the Cloudflare dashboard (Turnstile → your widget).
+    # The site key is public — it is served to the frontend via GET /auth/config.
+    # The secret key stays server-side and is used to verify tokens.
+    # When either is unset, captcha verification is skipped (local dev).
+    turnstile_site_key: str | None = None
     turnstile_secret_key: str | None = None
 
     # -- Account tokens (email verification / password reset) --------------
@@ -136,6 +140,32 @@ class Settings(BaseSettings):
     coherence_verification_cin_url: str | None = None
     coherence_codes_postaux_url: str | None = None
     coherence_plafonds_revenus_url: str | None = None
+
+    # -- Local document analysis (ai.inconsistency) ------------------------
+    # Inconsistency detection reads the citizen's documents, so it runs on this
+    # server only: OCR and the Mistral model are local processes.
+    # `tesseract` (pytesseract + the tesseract binary), `paddle` (paddleocr), or
+    # `none`. A missing engine degrades to "no OCR" — never to a cloud call.
+    ocr_backend: str = "tesseract"
+    ocr_languages: str = "fra+eng"
+    # Explicit path to tesseract.exe on Windows, where it is rarely on PATH.
+    tesseract_cmd: str | None = None
+    # The citizen upload flow (classification) historically sent scans to
+    # Mistral's cloud OCR. It now tries local OCR first; this flag decides
+    # whether a scan local OCR cannot read may still go to the cloud. Set it to
+    # false for strictly local processing.
+    ocr_cloud_fallback: bool = True
+    # Mistral served locally — Ollama's chat endpoint (`ollama pull mistral`).
+    # The client refuses any host that is not loopback, a private address or a
+    # single-label service name (e.g. `ollama` in docker compose).
+    local_llm_enabled: bool = True
+    local_llm_url: str = "http://localhost:11434/api/chat"
+    local_llm_model: str = "mistral"
+    local_llm_timeout_seconds: float = 90.0
+    # When the Mistral API refuses a call (quota, inactive plan, network), the
+    # citizen assistant drafts its answer with the local model instead of
+    # answering "unavailable". Same response contract; slower on CPU.
+    chatbot_local_fallback: bool = True
 
     # -- France Travail — Offres d'emploi API (ai.job_search) --------------
     # Optional on purpose, like the Mistral key: absent, job search degrades

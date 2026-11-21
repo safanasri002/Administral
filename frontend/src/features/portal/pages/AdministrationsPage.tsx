@@ -1,32 +1,38 @@
-import { ArrowRight, Briefcase, HeartPulse, Home, Lock, Receipt } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Landmark } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { SERVICES } from '@/app/config/services';
-import { CitizenPageHeader } from '@/components/citizen/CitizenPageHeader';
+import { AdministrationCard } from '@/components/citizen/ServiceCard';
+import { AdministrationsHero } from '@/features/portal/components/AdministrationsHero';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useVoicePage } from '@/features/voice/context/VoicePageContext';
 import type { VoicePageAction } from '@/features/voice/types';
-import { cn } from '@/lib/utils';
-import type { AdministrationId } from '@/types';
-
-/** One recognisable icon per administration, rather than a single generic mark repeated on every card. */
-const ADMINISTRATION_ICONS: Record<AdministrationId, LucideIcon> = {
-  caf: Home,
-  'france-travail': Briefcase,
-  'assurance-maladie': HeartPulse,
-  impots: Receipt,
-};
 
 /**
- * "Administrations" — the first choice a citizen makes, right after voice
- * onboarding (see `VoiceOnboardingPage`), before any account is required.
+ * "Administrations" — the first choice a citizen makes, and now the first
+ * screen after sign-in: the voice choice is offered by a dialog on the landing
+ * page, not by an interstitial standing between a citizen and their dossier.
  * CAF and France Travail are wired to real backends; the rest render as
  * locked tiles rather than pretending to be usable.
  */
 export default function AdministrationsPage() {
   useDocumentTitle('Administrations');
   const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+
+  /* La recherche du bandeau filtre la grille : nom, intitulé complet et
+     organisme, ce sous quoi une administration est cherchée. */
+  const visibleServices = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return SERVICES;
+    return SERVICES.filter((service) =>
+      [service.name, service.fullName, service.administration]
+        .join(' ')
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [query]);
 
   const availableServices = SERVICES.filter((service) => service.status === 'available');
   const availableActions: VoicePageAction[] = availableServices.map((service) => ({
@@ -45,73 +51,31 @@ export default function AdministrationsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-7xl">
-      <CitizenPageHeader
-        eyebrow="Bienvenue sur Administral"
-        title="Choisissez une administration"
-        description="Sélectionnez l’administration avec laquelle vous souhaitez interagir. D’autres seront progressivement disponibles."
-      />
+    <>
+      <AdministrationsHero query={query} onQueryChange={setQuery} />
 
-      <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {SERVICES.map((service) => {
-          const isAvailable = service.status === 'available';
-          const Icon = ADMINISTRATION_ICONS[service.id];
+      {/* `pb-20` : la grille ne touche plus le pied de page, elle a la place de
+          se terminer avant que le bandeau bleu commence. */}
+      <div className="mx-auto mt-12 max-w-7xl pb-20">
+        <h2 className="mb-8 flex items-center gap-3 font-display text-xl font-extrabold text-ink">
+          <Landmark className="size-6 text-brand" aria-hidden="true" />
+          Toutes les administrations
+        </h2>
 
-          const content = (
-            <article
-              className={cn(
-                'flex h-full flex-col justify-between rounded-2xl border border-border/60 bg-card p-6 shadow-sm transition-all duration-300',
-                isAvailable && 'hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-lg',
-                !isAvailable && 'opacity-60',
-              )}
-            >
-              <div>
-                <div className="flex items-start justify-between gap-3">
-                  {service.logoUrl ? (
-                    <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/60 bg-white p-1.5">
-                      <img src={service.logoUrl} alt="" aria-hidden="true" className="size-full object-contain" />
-                    </span>
-                  ) : (
-                    <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand">
-                      <Icon className="size-6" aria-hidden="true" />
-                    </span>
-                  )}
-                  {!isAvailable && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1 text-[11px] font-semibold text-brand">
-                      <Lock className="size-3" aria-hidden="true" />
-                      Bientôt
-                    </span>
-                  )}
-                </div>
-                <p className="mt-4 font-display text-lg font-extrabold text-ink">{service.name}</p>
-                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{service.description}</p>
-              </div>
-              <span
-                className={cn(
-                  'mt-5 inline-flex items-center gap-2 text-sm font-semibold text-brand',
-                  !isAvailable && 'invisible',
-                )}
-                aria-hidden={!isAvailable}
-              >
-                Ouvrir
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </span>
-            </article>
-          );
-
-          return (
+        <ul className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {visibleServices.map((service) => (
             <li key={service.id}>
-              {isAvailable ? (
-                <Link to={service.basePath} aria-label={`Ouvrir ${service.name}`}>
-                  {content}
-                </Link>
-              ) : (
-                <div aria-disabled="true">{content}</div>
-              )}
+              <AdministrationCard service={service} size="compact" />
             </li>
-          );
-        })}
-      </ul>
-    </div>
+          ))}
+        </ul>
+
+        {visibleServices.length === 0 && (
+          <p className="rounded-xl border border-dashed border-brand/30 bg-brand-soft/40 px-6 py-10 text-center text-sm text-muted-foreground">
+            Aucune administration ne correspond à « {query.trim()} ».
+          </p>
+        )}
+      </div>
+    </>
   );
 }

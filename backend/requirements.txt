@@ -14,6 +14,11 @@ pdfplumber==0.11.5
 PyMuPDF==1.26.6
 opencv-python-headless==4.12.0.88
 Pillow==12.0.0
+# Local OCR for inconsistency detection (ai.inconsistency). The wrapper is
+# light; the engine is the `tesseract` binary (+ French data), installed by the
+# Dockerfile — on Windows set TESSERACT_CMD. PaddleOCR is the heavier optional
+# alternative (OCR_BACKEND=paddle): `pip install paddleocr paddlepaddle`.
+pytesseract==0.3.13
 
 # Schema migrations
 alembic==1.14.0
